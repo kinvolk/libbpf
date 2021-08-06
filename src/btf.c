@@ -4021,7 +4021,7 @@ static void btf_dedup_merge_hypot_map(struct btf_dedup *d)
 		 */
 		if (d->hypot_adjust_canon)
 			continue;
-		
+
 		if (t_kind == BTF_KIND_FWD && c_kind != BTF_KIND_FWD)
 			d->map[t_id] = c_id;
 
@@ -4402,6 +4402,8 @@ struct btf *libbpf_find_kernel_btf(void)
 	} locations[] = {
 		/* try canonical vmlinux BTF through sysfs first */
 		{ "/sys/kernel/btf/vmlinux", true /* raw BTF */ },
+		/* path where Inspektor Gadget puts vmlinux if downloaded from btfhub */
+		{ "/vmlinux.btf", true},
 		/* fall back to trying to find vmlinux ELF on disk otherwise */
 		{ "/boot/vmlinux-%1$s" },
 		{ "/lib/modules/%1$s/vmlinux-%1$s" },
