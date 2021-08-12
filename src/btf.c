@@ -4021,7 +4021,7 @@ static void btf_dedup_merge_hypot_map(struct btf_dedup *d)
 		 */
 		if (d->hypot_adjust_canon)
 			continue;
-		
+
 		if (t_kind == BTF_KIND_FWD && c_kind != BTF_KIND_FWD)
 			d->map[t_id] = c_id;
 
@@ -4400,6 +4400,9 @@ struct btf *libbpf_find_kernel_btf(void)
 		const char *path_fmt;
 		bool raw_btf;
 	} locations[] = {
+		/* try custom path first */
+		{ "/tmp/vmlinux.btf", true },
+
 		/* try canonical vmlinux BTF through sysfs first */
 		{ "/sys/kernel/btf/vmlinux", true /* raw BTF */ },
 		/* fall back to trying to find vmlinux ELF on disk otherwise */
