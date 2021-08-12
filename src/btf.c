@@ -4414,6 +4414,9 @@ struct btf *btf__load_vmlinux_btf(void)
 		const char *path_fmt;
 		bool raw_btf;
 	} locations[] = {
+		/* try custom path first */
+		{ "/tmp/vmlinux.btf", true },
+
 		/* try canonical vmlinux BTF through sysfs first */
 		{ "/sys/kernel/btf/vmlinux", true /* raw BTF */ },
 		/* fall back to trying to find vmlinux ELF on disk otherwise */
