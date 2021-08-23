@@ -56,6 +56,8 @@
 #include "hashmap.h"
 #include "bpf_gen_internal.h"
 
+#include <json-glib/json-glib.h>
+
 #ifndef BPF_FS_MAGIC
 #define BPF_FS_MAGIC		0xcafe4a11
 #endif
@@ -5776,6 +5778,218 @@ bpf_object__free_relocs(struct bpf_object *obj)
 	}
 }
 
+static bool getKernelProcVersion(char *ver, size_t len)
+{
+	FILE *fp;
+	unsigned int i;
+
+	fp = fopen("/proc/version", "r");
+	if (fp == NULL)
+		return false;
+	if (fread(ver, 1, len, fp) == 0) {
+		fclose(fp);
+		return false;
+	}
+	fclose(fp);
+
+	i = strlen(ver) - 1;
+	while (isspace(ver[i])) {
+		ver[i] = 0x00;
+		i--;
+	}
+
+	return true;
+}
+
+static int get_offset(JsonReader *reader, const char *member) {
+	if (!json_reader_read_member(reader, member)) {
+		return -1;
+	}
+
+	if (json_reader_count_elements(reader) != 1) {
+		pr_warn("only members with count as 1 are allowed");
+		// TODO: free memory
+		return -1;
+	}
+
+	if (!json_reader_read_element(reader, 0)) {
+		return -1;
+	}
+
+	return json_reader_get_int_value(reader);
+}
+
+static JsonReader* read_json(const char *path, const char *uname) {
+	JsonParser *parser = NULL;
+	GError *error = NULL;
+	JsonReader *reader = NULL;
+
+	char **unames = NULL;
+	int i = 0;
+	int found = -1;
+
+	parser = json_parser_new();
+	json_parser_load_from_file(parser, path, &error);
+	if (error) {
+		g_error_free(error);
+		g_object_unref(parser);
+		return NULL;
+	}
+
+	reader = json_reader_new(json_parser_get_root(parser));
+	unames = json_reader_list_members(reader);
+
+	while (unames[i] != NULL) {
+		if (strstr(unames[i], uname) != NULL) {
+			found = i;
+			break;
+		}
+		i++;
+	}
+
+	if (found == -1) {
+		pr_warn("uname not found\n");
+		return NULL;
+	}
+
+	if (!json_reader_read_member(reader, unames[found])) {
+		pr_warn("failed to read uname in json\n");
+		return NULL;
+	}
+
+	return reader;
+}
+
+int fill_spec(const char *spec_str, int spec[]) {
+	int access_idx;
+	int parsed_len;
+	int index = 0;
+
+	/* parse spec_str="0:1:2:3:4" into array raw_spec=[0, 1, 2, 3, 4] */
+	while (*spec_str) {
+		if (*spec_str == ':')
+			++spec_str;
+		if (sscanf(spec_str, "%d%n", &access_idx, &parsed_len) != 1)
+			return -1;
+		//if (index == BPF_CORE_SPEC_MAX_LEN)
+		//	return -E2BIG;
+		spec_str += parsed_len;
+		spec[index++] = access_idx;
+	}
+
+	return index;
+}
+
+static int bpf_object__relocate_json(struct bpf_object *obj) {
+	const struct btf_ext_info_sec *sec;
+	const struct bpf_core_relo *rec;
+	const struct btf_ext_info *seg;
+	struct bpf_program *prog;
+	const char *sec_name;
+	struct bpf_insn *insn;
+	int i, err = 0, insn_idx, sec_idx, offset;
+
+	int access_spec[4] = {0};
+
+	const struct btf_type *type;
+	const struct btf_member *member;
+	const char *member_name;
+
+	const char jsonPath[] = "/tmp/offsets.json";
+
+	// TODO: free this
+	char *kernelversion = malloc(1024);
+	memset(kernelversion, 0, 1024);
+
+	if (!getKernelProcVersion(kernelversion, 1024)) {
+		pr_warn("error to get kernel version\n");
+		return -1;
+	}
+
+	pr_debug("kernel is %s\n",kernelversion);
+
+	JsonReader *reader = read_json(jsonPath, kernelversion);
+	if (!reader) {
+		pr_warn("error reading json offsets\n");
+		return -1;
+	}
+
+	seg = &obj->btf_ext->core_relo_info;
+	for_each_btf_ext_sec(seg, sec) {
+		sec_name = btf__name_by_offset(obj->btf, sec->sec_name_off);
+		pr_info("sec '%s': found %d CO-RE relocations\n", sec_name, sec->num_info);
+		/* bpf_object's ELF is gone by now so it's not easy to find
+		 * section index by section name, but we can find *any*
+		 * bpf_program within desired section name and use it's
+		 * prog->sec_idx to do a proper search by section index and
+		 * instruction offset
+		 */
+		prog = NULL;
+		for (i = 0; i < obj->nr_programs; i++) {
+			prog = &obj->programs[i];
+			if (strcmp(prog->sec_name, sec_name) == 0)
+				break;
+		}
+		if (!prog) {
+			pr_warn("sec '%s': failed to find a BPF program\n", sec_name);
+			return -ENOENT;
+		}
+		sec_idx = prog->sec_idx;
+
+		for_each_btf_ext_rec(seg, sec, i, rec) {
+			insn_idx = rec->insn_off / BPF_INSN_SZ;
+			prog = find_prog_by_sec_insn(obj, sec_idx, insn_idx);
+			if (!prog) {
+				pr_warn("sec '%s': failed to find program at insn #%d for CO-RE offset relocation #%d\n",
+					sec_name, insn_idx, i);
+				return -EINVAL;
+			}
+
+			if (rec->insn_off % BPF_INSN_SZ)
+				return -EINVAL;
+
+			/* adjust insn_idx from section frame of reference to the local
+			* program's frame of reference; (sub-)program code is not yet
+			* relocated, so it's enough to just subtract in-section offset
+			*/
+			insn_idx = insn_idx - prog->sec_insn_off;
+			if (insn_idx > prog->insns_cnt)
+				return -EINVAL;
+			insn = &prog->insns[insn_idx];
+
+			err = fill_spec(btf__str_by_offset(obj->btf, rec->access_str_off), access_spec);
+			if (err == -1) {
+				pr_warn("error filling spec\n");
+				return -1;
+			}
+
+			type = btf__type_by_id(obj->btf, rec->type_id);
+			member = btf_members(type) + access_spec[1];
+			member_name = btf__str_by_offset(obj->btf, member->name_off);
+			offset = get_offset(reader, member_name);
+			if (offset == -1) {
+				pr_warn("failed to get json offset for %s\n", member_name);
+				return -1;
+			}
+
+			pr_debug("offset of '%s' is %d\n", member_name, offset);
+
+			struct bpf_core_relo_res res = {
+				.validate = false, // it's a poc, we don't need to verify anything.
+				.new_val = offset,
+			};
+
+			err = bpf_core_patch_insn(prog->name, insn, insn_idx, rec, i, &res);
+			if (err) {
+				pr_warn("failed to patch ins\n");
+				return -ENOENT;
+			}
+		}
+	}
+
+	return 0;
+}
+
 static int
 bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
 {
@@ -5783,7 +5997,16 @@ bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
 	size_t i, j;
 	int err;
 
-	if (obj->btf_ext) {
+	pr_info("*****custom json patch logic starts here*****\n");
+	err = bpf_object__relocate_json(obj);
+	if (err) {
+		pr_warn("failed to perform json relocations: %d\n",
+			err);
+		return err;
+	}
+	pr_info("*****custom json patch  logic ends here*****\n");
+
+	if (0 && obj->btf_ext) {
 		err = bpf_object__relocate_core(obj, targ_btf_path);
 		if (err) {
 			pr_warn("failed to perform CO-RE relocations: %d\n",
