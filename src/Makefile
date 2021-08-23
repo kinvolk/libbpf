@@ -27,8 +27,8 @@ ifdef NO_PKG_CONFIG
 	ALL_LDFLAGS += -lelf -lz
 else
 	PKG_CONFIG ?= pkg-config
-	ALL_CFLAGS += $(shell $(PKG_CONFIG) --cflags libelf zlib)
-	ALL_LDFLAGS += $(shell $(PKG_CONFIG) --libs libelf zlib)
+	ALL_CFLAGS += $(shell $(PKG_CONFIG) --cflags libelf zlib json-glib-1.0)
+	ALL_LDFLAGS += $(shell $(PKG_CONFIG) --libs libelf zlib json-glib-1.0)
 endif
 
 OBJDIR ?= .
