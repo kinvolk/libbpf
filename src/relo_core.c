@@ -740,31 +740,6 @@ static int bpf_core_calc_enumval_relo(const struct bpf_core_relo *relo,
 	return 0;
 }
 
-struct bpf_core_relo_res
-{
-	/* expected value in the instruction, unless validate == false */
-	__u32 orig_val;
-	/* new value that needs to be patched up to */
-	__u32 new_val;
-	/* relocation unsuccessful, poison instruction, but don't fail load */
-	bool poison;
-	/* some relocations can't be validated against orig_val */
-	bool validate;
-	/* for field byte offset relocations or the forms:
-	 *     *(T *)(rX + <off>) = rY
-	 *     rX = *(T *)(rY + <off>),
-	 * we remember original and resolved field size to adjust direct
-	 * memory loads of pointers and integers; this is necessary for 32-bit
-	 * host kernel architectures, but also allows to automatically
-	 * relocate fields that were resized from, e.g., u32 to u64, etc.
-	 */
-	bool fail_memsz_adjust;
-	__u32 orig_sz;
-	__u32 orig_type_id;
-	__u32 new_sz;
-	__u32 new_type_id;
-};
-
 /* Calculate original and target relocation values, given local and target
  * specs and relocation kind. These values are calculated for each candidate.
  * If there are multiple candidates, resulting values should all be consistent
@@ -916,7 +891,7 @@ static int insn_bytes_to_bpf_size(__u32 sz)
  * 5. *(T *)(rX + <off>) = rY, where T is one of {u8, u16, u32, u64};
  * 6. *(T *)(rX + <off>) = <imm>, where T is one of {u8, u16, u32, u64}.
  */
-static int bpf_core_patch_insn(const char *prog_name, struct bpf_insn *insn,
+int bpf_core_patch_insn(const char *prog_name, struct bpf_insn *insn,
 			       int insn_idx, const struct bpf_core_relo *relo,
 			       int relo_idx, const struct bpf_core_relo_res *res)
 {
