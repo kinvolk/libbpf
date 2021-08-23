@@ -2645,6 +2645,9 @@ static bool prog_needs_vmlinux_btf(struct bpf_program *prog)
 
 static bool obj_needs_vmlinux_btf(const struct bpf_object *obj)
 {
+	// don't require vmlinux for json-based POC
+	return false;
+
 	struct bpf_program *prog;
 	int i;
 
