@@ -88,13 +88,31 @@ struct bpf_core_cand_list {
 	int len;
 };
 
+struct btf_reloc_type;
+struct btf_reloc_ids_map;
+
+struct btf_reloc_info {
+	struct btf_reloc_type *types, *types_last;
+	struct btf_reloc_ids_map *ids_map, *ids_map_last;
+
+	struct btf *src_btf;
+};
+
+struct btf_reloc_info *bpf_reloc_info_new(void);
+void bpf_reloc_info_free(struct btf_reloc_info *);
+
 int bpf_core_apply_relo_insn(const char *prog_name,
 			     struct bpf_insn *insn, int insn_idx,
 			     const struct bpf_core_relo *relo, int relo_idx,
 			     const struct btf *local_btf,
-			     struct bpf_core_cand_list *cands);
+			     struct bpf_core_cand_list *cands,
+				 struct btf_reloc_info *reloc_info);
 int bpf_core_types_are_compat(const struct btf *local_btf, __u32 local_id,
 			      const struct btf *targ_btf, __u32 targ_id);
 
 size_t bpf_core_essential_name_len(const char *name);
+
+void btf_reloc_info_dump(struct btf_reloc_info *info);
+int btf_reloc_info_save(struct btf_reloc_info *info, const char *path);
+
 #endif

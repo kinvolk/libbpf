@@ -30,6 +30,8 @@ enum btf_endianness {
 	BTF_BIG_ENDIAN = 1,
 };
 
+LIBBPF_API int btf__save_to_file(struct btf *btf, const char *path);
+
 LIBBPF_API void btf__free(struct btf *btf);
 
 LIBBPF_API struct btf *btf__new(const void *data, __u32 size);

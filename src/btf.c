@@ -4663,3 +4663,25 @@ int btf_ext_visit_str_offs(struct btf_ext *btf_ext, str_off_visit_fn visit, void
 
 	return 0;
 }
+
+int btf__save_to_file(struct btf *btf, const char *path) {
+	const void *data;
+	unsigned int size;
+	FILE *file;
+
+	data = btf__get_raw_data(btf, &size);
+	if (data == NULL)
+		return -1;
+
+	file = fopen(path, "wb");
+	if (file == NULL)
+		return -1;
+
+	if (fwrite(data, 1, size, file) != size)
+		return -1;
+
+	if (fclose(file) != 0)
+		return -1;
+
+	return 0;
+}
