@@ -6876,7 +6876,7 @@ static int bpf_object__resolve_externs(struct bpf_object *obj,
 	return 0;
 }
 
-int bpf_object__reloc_info_gen(struct btf_reloc_info *info, struct bpf_object *obj, const char *targ_btf_path)
+int bpf_object__reloc_info_gen(struct btf_reloc_info *info, struct bpf_object *obj)
 {
 	return bpf_object__relocate_core(obj, NULL, info);
 }

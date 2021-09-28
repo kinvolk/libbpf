@@ -917,7 +917,7 @@ LIBBPF_API int bpf_linker__finalize(struct bpf_linker *linker);
 LIBBPF_API void bpf_linker__free(struct bpf_linker *linker);
 
 LIBBPF_API int bpf_object__reloc_info_gen(struct btf_reloc_info *info,
-					  struct bpf_object *obj, const char *targ_btf_path);
+					  struct bpf_object *obj);
 
 #ifdef __cplusplus
 } /* extern "C" */
