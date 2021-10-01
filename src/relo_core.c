@@ -1479,6 +1479,17 @@ static int btf_reloc_info_gen(struct btf_reloc_info *info, const struct bpf_core
 			continue;
 		}
 
+		if (btf_is_typedef(btf_type)) {
+			struct btf_type *typedef_type = btf_type_by_id(btf, btf_type->type);
+
+			if (!btf_is_struct(typedef_type) && !btf_is_union(typedef_type)) {
+				printf("typedef not a struct or an union: %u\n", btf_type->type);
+				return -1;
+			}
+
+			btf_type = typedef_type;
+		}
+
 		if (!btf_is_struct(btf_type) && !btf_is_union(btf_type)) {
 			printf("received a type not expected\n");
 			return -1;
