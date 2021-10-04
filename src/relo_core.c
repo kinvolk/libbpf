@@ -1113,6 +1113,13 @@ struct btf_reloc_type {
 	int nmembers;
 };
 
+struct btf_reloc_info {
+	struct btf_reloc_type *types, *types_last;
+	struct btf_reloc_ids_map *ids_map, *ids_map_last;
+
+	struct btf *src_btf;
+};
+
 struct btf_reloc_ids_map {
 	struct btf_reloc_ids_map *next;
 
@@ -1120,10 +1127,21 @@ struct btf_reloc_ids_map {
 	unsigned int new;
 };
 
-struct btf_reloc_info *bpf_reloc_info_new(void) {
-	struct btf_reloc_info *info =  calloc(1, sizeof(struct btf_reloc_info));
-	if (info == NULL)
-		return NULL;
+struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
+	struct btf_reloc_info *info;
+	struct btf *src_btf;
+
+	info = calloc(1, sizeof(struct btf_reloc_info));
+	if (!info)
+		return ERR_PTR(-ENOMEM);
+
+	src_btf = btf__parse(targ_btf_path, NULL);
+	if (libbpf_get_error(src_btf)) {
+		free(info);
+		return (void *) src_btf;
+	}
+
+	info->src_btf = src_btf;
 
 	return info;
 }
@@ -1147,6 +1165,8 @@ void bpf_reloc_info_free(struct btf_reloc_info *info) {
 		ids_tmp = ids_tmp->next;
 		free(ids_cur);
 	}
+
+	btf__free(info->src_btf);
 
 	free(info);
 }
@@ -1446,6 +1466,10 @@ int btf_reloc_info_save(struct btf_reloc_info *info, const char *path) {
 
 	/* third: save to file */
 	return btf__save_to_file(btf_new, path);
+}
+
+struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
+	return info->src_btf;
 }
 
 static int btf_reloc_info_gen(struct btf_reloc_info *info, const struct bpf_core_relo_res *res) {
