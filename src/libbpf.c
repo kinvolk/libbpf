@@ -512,6 +512,9 @@ struct bpf_object {
 	size_t btf_module_cnt;
 	size_t btf_module_cap;
 
+	/* Relocation info when using bpf_object__reloc_info_gen() */
+	struct btf_reloc_info *reloc_info;
+
 	void *priv;
 	bpf_object_clear_priv_t clear_priv;
 
@@ -5179,8 +5182,7 @@ static int bpf_core_apply_relo(struct bpf_program *prog,
 
 static int
 bpf_object__relocate_core(struct bpf_object *obj,
-			  const char *targ_btf_path,
-			  struct btf_reloc_info *reloc_info)
+			  const char *targ_btf_path)
 {
 	const struct btf_ext_info_sec *sec;
 	const struct bpf_core_relo *rec;
@@ -5201,8 +5203,8 @@ bpf_object__relocate_core(struct bpf_object *obj,
 			pr_warn("failed to parse target BTF: %d\n", err);
 			return err;
 		}
-	} else if (reloc_info && reloc_info->src_btf) {
-		obj->btf_vmlinux_override = reloc_info->src_btf;
+	} else if (obj->reloc_info && obj->reloc_info->src_btf) {
+		obj->btf_vmlinux_override = obj->reloc_info->src_btf;
 	}
 
 	cand_cache = hashmap__new(bpf_core_hash_fn, bpf_core_equal_fn, NULL);
@@ -5254,7 +5256,7 @@ bpf_object__relocate_core(struct bpf_object *obj,
 			if (!prog->load)
 				continue;
 
-			err = bpf_core_apply_relo(prog, rec, i, obj->btf, cand_cache, reloc_info);
+			err = bpf_core_apply_relo(prog, rec, i, obj->btf, cand_cache, obj->reloc_info);
 			if (err) {
 				pr_warn("prog '%s': relo #%d: failed to relocate: %d\n",
 					prog->name, i, err);
@@ -5264,7 +5266,7 @@ bpf_object__relocate_core(struct bpf_object *obj,
 	}
 
 out:
-	if (!reloc_info) {
+	if (!obj->reloc_info) {
 		/* obj->btf_vmlinux and module BTFs are freed after object load */
 		btf__free(obj->btf_vmlinux_override);
 		obj->btf_vmlinux_override = NULL;
@@ -5797,7 +5799,7 @@ bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
 	int err;
 
 	if (obj->btf_ext) {
-		err = bpf_object__relocate_core(obj, targ_btf_path, NULL);
+		err = bpf_object__relocate_core(obj, targ_btf_path);
 		if (err) {
 			pr_warn("failed to perform CO-RE relocations: %d\n",
 				err);
@@ -6878,7 +6880,8 @@ static int bpf_object__resolve_externs(struct bpf_object *obj,
 
 int bpf_object__reloc_info_gen(struct btf_reloc_info *info, struct bpf_object *obj)
 {
-	return bpf_object__relocate_core(obj, NULL, info);
+	obj->reloc_info = info;
+	return bpf_object__relocate_core(obj, NULL);
 }
 
 int bpf_object__load_xattr(struct bpf_object_load_attr *attr)
