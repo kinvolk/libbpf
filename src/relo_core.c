@@ -1300,47 +1300,56 @@ static int bpf_reloc_type_add_member(struct btf_reloc_info *info, struct btf_rel
 	return 0;
 }
 
-int btf_reloc_info_save(struct btf_reloc_info *info, const char *path) {
+struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
+	struct hashmap_entry *entry;
 	struct btf *btf_new;
+	int err, i;
 
 	btf_new = btf__new_empty();
-	if (btf_new == NULL) {
-		printf("failed to allocate btf struct\n");
-		return -1;
+	if (IS_ERR(btf_new)) {
+		pr_warn("failed to allocate btf structure\n");
+		return btf_new;
 	}
 
-	struct hashmap_entry *entry;
-	int i;
-
-	/* first pass: add all types and add their new ids to the id_map */
+	/* first pass: add all types and add their new ids to the ids map */
 	hashmap__for_each_entry(info->types, entry, i) {
-		int new_id;
 		struct btf_reloc_type *reloc_type = entry->value;
 		struct btf_type *btf_type = reloc_type->type;
+		int new_id;
 
 		/* add members for struct and union */
 		if (btf_is_struct(btf_type) || btf_is_union(btf_type)) {
-			int nmembers = hashmap__size(reloc_type->members);
-			int new_size = sizeof(struct btf_type) + nmembers * sizeof(struct btf_member);
-			struct btf_type *btf_type_cpy = calloc(1, new_size);
+			struct hashmap_entry *member_entry;
+			struct btf_type *btf_type_cpy;
+			int nmembers, new_size, bkt, index;
 
-			// copy header
+			nmembers = hashmap__size(reloc_type->members);
+			new_size = sizeof(struct btf_type) + nmembers * sizeof(struct btf_member);
+
+			btf_type_cpy = calloc(1, new_size);
+			if (btf_type_cpy == NULL) {
+				err = -ENOMEM;
+				goto out;
+			}
+
+			/* copy header */
 			memcpy(btf_type_cpy, btf_type, sizeof(struct btf_type));
 
-			struct hashmap_entry *member_entry;
-			int bktj;
+			/* copy only members that are needed */
+			index = 0;
+			hashmap__for_each_entry(reloc_type->members, member_entry, bkt) {
+				struct btf_reloc_member *reloc_member;
+				struct btf_member *btf_member;
 
-			int index = 0;
+				reloc_member = member_entry->value;
+				btf_member = btf_members(btf_type) + reloc_member->idx;
 
-			// copy only members that are needed
-			hashmap__for_each_entry(reloc_type->members, member_entry, bktj) {
-				struct btf_reloc_member *member = member_entry->value;
-				struct btf_member *btf_member = btf_members(btf_type) + member->idx;
 				memcpy(btf_members(btf_type_cpy) + index, btf_member, sizeof(struct btf_member));
+
 				index++;
 			}
 
-			// set new vlen
+			/* set new vlen */
 			btf_type_cpy->info = btf_type_info(btf_kind(btf_type_cpy), nmembers, btf_kflag(btf_type_cpy));
 
 			new_id = btf__add_type(btf_new, info->src_btf, btf_type_cpy);
@@ -1349,20 +1358,19 @@ int btf_reloc_info_save(struct btf_reloc_info *info, const char *path) {
 			new_id = btf__add_type(btf_new, info->src_btf, btf_type);
 		}
 
-		// Add ID mapping
+		/* add ID mapping */
 		btf_reloc_id_add(info, reloc_type->id, new_id);
 	}
 
-	/* second pass: fix up types */
+	/* second pass: fix up type ids */
 	// TODO: this could be an another function
 	for (int i = 0; i <= btf__get_nr_types(btf_new); i++) {
+		struct btf_member *btf_member;
 		struct btf_type *btf_type;
+		struct btf_param *params;
+		struct btf_array *array;
 
 		btf_type = (struct btf_type *) btf__type_by_id(btf_new, i);
-
-		struct btf_member *btf_member;
-		struct btf_array *array;
-		struct btf_param *params;
 
 		switch (btf_kind(btf_type)) {
 		case BTF_KIND_STRUCT:
@@ -1396,28 +1404,27 @@ int btf_reloc_info_save(struct btf_reloc_info *info, const char *path) {
 		}
 	}
 
-	/* fix sizes */
+	/* third: fix sizes */
 	hashmap__for_each_entry(info->types, entry, i) {
-		unsigned int new_type_id;
+		struct btf_reloc_type *reloc_type;
 		struct btf_type *btf_type;
+		unsigned int new_type_id;
 
-		struct btf_reloc_type *reloc_type = entry->value;
-
+		reloc_type = entry->value;
 		new_type_id = btf_reloc_id_get(info, reloc_type->id);
 		btf_type = (struct btf_type *) btf__type_by_id(btf_new, new_type_id);
 
-		// only for structs and unions
+		/* only for structs and unions */
 		if (btf_is_union(btf_type) || btf_is_struct(btf_type)) {
+			struct btf_member *members;
 			__u32 new_size = 0;
 
-			struct btf_member *members;
 			members = btf_members(btf_type);
 
 			for (int i = 0; i < btf_vlen(btf_type); i++) {
 				const struct btf_type *member_type;
 
 				member_type = btf__type_by_id(btf_new, members[i].type);
-
 				new_size += member_type->size;
 			}
 
@@ -1425,19 +1432,22 @@ int btf_reloc_info_save(struct btf_reloc_info *info, const char *path) {
 		}
 	}
 
-	/* dedup */
-	int err;
+	/* fourth: dedup */
 	struct btf_dedup_opts dedup_opts = {};
 	err = btf__dedup(btf_new, NULL, &dedup_opts);
 	if (err) {
-		return err;
+		pr_warn("error calling btf__dedup()\n");
+		goto out;
 	}
 
-	/* third: save to file */
-	return btf__save_to_file(btf_new, path);
+	return btf_new;
+
+out:
+	btf__free(btf_new);
+	return ERR_PTR(err);
 }
 
-struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
+struct btf *bpf_reloc_info_get_src_btf(struct btf_reloc_info *info) {
 	return info->src_btf;
 }
 
