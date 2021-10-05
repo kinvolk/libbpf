@@ -5203,8 +5203,8 @@ bpf_object__relocate_core(struct bpf_object *obj,
 			pr_warn("failed to parse target BTF: %d\n", err);
 			return err;
 		}
-	} else if (obj->reloc_info && obj->reloc_info->src_btf) {
-		obj->btf_vmlinux_override = obj->reloc_info->src_btf;
+	} else if (obj->reloc_info && bpf_reloc_info_get_btf(obj->reloc_info)) {
+		obj->btf_vmlinux_override = bpf_reloc_info_get_btf(obj->reloc_info);
 	}
 
 	cand_cache = hashmap__new(bpf_core_hash_fn, bpf_core_equal_fn, NULL);
