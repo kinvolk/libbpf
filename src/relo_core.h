@@ -92,7 +92,6 @@ struct btf_reloc_info;
 
 struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path);
 void bpf_reloc_info_free(struct btf_reloc_info *);
-void btf_reloc_info_dump(struct btf_reloc_info *info);
 int btf_reloc_info_save(struct btf_reloc_info *info, const char *path);
 struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info);
 
