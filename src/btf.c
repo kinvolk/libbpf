@@ -4677,8 +4677,10 @@ int btf__save_to_file(struct btf *btf, const char *path) {
 	if (file == NULL)
 		return -1;
 
-	if (fwrite(data, 1, size, file) != size)
+	if (fwrite(data, 1, size, file) != size) {
+		fclose(file);
 		return -1;
+	}
 
 	if (fclose(file) != 0)
 		return -1;
