@@ -1474,6 +1474,14 @@ static int btf_reloc_info_gen(struct btf_reloc_info *info, const struct bpf_core
 			continue;
 		}
 
+		if (btf_is_typedef(btf_type)) {
+			// add type for reloc type
+			reloc_type = btf_reloc_get_type(info, btf_type->type);
+
+			//
+			btf_type = reloc_type->type;
+		}
+
 		if (!btf_is_struct(btf_type) && !btf_is_union(btf_type)) {
 			printf("received a type not expected\n");
 			return -1;
