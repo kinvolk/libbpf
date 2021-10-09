@@ -1501,9 +1501,8 @@ static void btf_reloc_dump_spec(struct bpf_core_spec *spec)
 	}
 }
 
-static int btf_reloc_info_gen(struct btf_reloc_info *info, const struct bpf_core_relo_res *res) {
+static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core_spec *targ_spec) {
 
-	struct bpf_core_spec *targ_spec = (struct bpf_core_spec *) res->targ_spec;
 	struct btf *btf = (struct btf *) targ_spec->btf;
 	struct btf_type *btf_type;
 	struct btf_reloc_type *reloc_type;
@@ -1597,6 +1596,35 @@ static int btf_reloc_info_gen(struct btf_reloc_info *info, const struct bpf_core
 	}
 
 	return 0;
+}
+
+static int btf_reloc_info_gen_type(struct btf_reloc_info *info, struct bpf_core_spec *targ_spec) {
+	printf("WARNING: untreated type based relocation\n");
+	return -1;
+}
+
+static int btf_reloc_info_gen_enumval(struct btf_reloc_info *info, struct bpf_core_spec *targ_spec) {
+	printf("WARNING: untreated enumval based relocation\n");
+	return 0;
+}
+
+static int btf_reloc_info_gen(struct btf_reloc_info *info, struct bpf_core_relo_res *res) {
+
+	struct bpf_core_spec *spec = (struct bpf_core_spec *) res->targ_spec;
+
+	if (core_relo_is_type_based(spec->relo_kind)) {
+		return btf_reloc_info_gen_type(info, spec);
+	}
+
+	if (core_relo_is_enumval_based(spec->relo_kind)) {
+		return btf_reloc_info_gen_enumval(info, spec);
+	}
+
+	if (core_relo_is_field_based(spec->relo_kind)) {
+		return btf_reloc_info_gen_field(info, spec);
+	}
+
+	return -1;
 }
 
 /*
