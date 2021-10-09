@@ -1525,10 +1525,8 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 
 	if (reloc_type == NULL) {
 		reloc_type = calloc(1, sizeof(struct btf_reloc_type));
-
 		reloc_type->type = btf_type;
 		reloc_type->id = targ_spec->root_type_id;
-
 		btf_reloc_add_type(btf, info, reloc_type);
 	}
 
@@ -1540,6 +1538,12 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 
 		if (!targ_spec->spec[i].name)
 			continue;
+		else {
+			while (btf_is_mod(btf_type) || btf_is_typedef(btf_type)) {
+				btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
+				reloc_type = btf_reloc_get_type(info, btf_type);
+			}
+		}
 
 		switch (btf_kind(btf_type)) {
 		case BTF_KIND_STRUCT:
@@ -1550,10 +1554,10 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 			//this = (struct btf_type *)btf__type_by_id(btf, a->type);
 			reloc_type = btf_reloc_get_type(info, a->type);
 			continue;
-		case BTF_KIND_TYPEDEF:
-			reloc_type = btf_reloc_get_type(info, btf_type->type);
-			btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
-			continue;
+		//case BTF_KIND_TYPEDEF:
+		//	reloc_type = btf_reloc_get_type(info, btf_type);
+		//	btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
+		//	continue;
 		//case BTF_KIND_INT:
 		//case BTF_KIND_PTR:
 		//case BTF_KIND_ENUM:
@@ -1578,7 +1582,6 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		/* add this as a member of the parent type */
 		struct btf_reloc_member *reloc_member;
 		reloc_member = calloc(1, sizeof(struct btf_reloc_member));
-
 		reloc_member->member = btf_member;
 		reloc_member->idx = targ_spec->raw_spec[i];
 
@@ -1596,11 +1599,9 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		/* add type for this */
 		struct btf_reloc_type *this_type;
 		this_type = calloc(1, sizeof(struct btf_reloc_type));
-
 		this_type->type = btf_type;
 		this_type->id = btf_member->type;
 		reloc_type = this_type;
-
 		btf_reloc_add_type(btf, info, this_type);
 	}
 
