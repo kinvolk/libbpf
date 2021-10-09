@@ -1441,12 +1441,65 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 	return info->src_btf;
 }
 
+static void btf_reloc_dump_spec(struct bpf_core_spec *spec)
+{
+	const struct btf_type *t;
+	const struct btf_enum *e;
+	const char *s;
+	__u32 type_id;
+	int i;
+
+	type_id = spec->root_type_id;
+	t = btf__type_by_id(spec->btf, type_id);
+	s = btf__name_by_offset(spec->btf, t->name_off);
+
+	printf("RELOCATION: [%u] %s %s", type_id, btf_kind_str(t), str_is_empty(s) ? "<anon>" : s);
+
+	if (core_relo_is_type_based(spec->relo_kind)) {
+		printf("\n");
+		return;
+	}
+
+	if (core_relo_is_enumval_based(spec->relo_kind)) {
+		t = skip_mods_and_typedefs(spec->btf, type_id, NULL);
+		e = btf_enum(t) + spec->raw_spec[0];
+		s = btf__name_by_offset(spec->btf, e->name_off);
+
+		printf("::%s = %u\n", s, e->val);
+		return;
+	}
+
+	if (core_relo_is_field_based(spec->relo_kind)) {
+		for (i = 0; i < spec->len; i++) {
+			if (spec->spec[i].name)
+				printf(".%s", spec->spec[i].name);
+			else if (i > 0 || spec->spec[i].idx > 0)
+				printf("[%u]", spec->spec[i].idx);
+		}
+
+		printf(" (");
+		for (i = 0; i < spec->raw_len; i++)
+			printf("%s%d", i == 0 ? "" : ":", spec->raw_spec[i]);
+
+		if (spec->bit_offset % 8)
+			printf(" @ offset %u.%u)", spec->bit_offset / 8, spec->bit_offset % 8);
+		else
+			printf(" @ offset %u)", spec->bit_offset / 8);
+
+		printf("\n");
+		return;
+	}
+}
+
 static int btf_reloc_info_gen(struct btf_reloc_info *info, const struct bpf_core_relo_res *res) {
+
 	struct bpf_core_spec *targ_spec = (struct bpf_core_spec *) res->targ_spec;
 	struct btf *btf = (struct btf *) targ_spec->btf;
 	struct btf_type *btf_type;
 	struct btf_reloc_type *reloc_type;
 	int err;
+
+	btf_reloc_dump_spec(targ_spec);
 
 	btf_type = btf_type_by_id(btf, targ_spec->root_type_id);
 
@@ -1461,21 +1514,42 @@ static int btf_reloc_info_gen(struct btf_reloc_info *info, const struct bpf_core
 		btf_reloc_add_type(btf, info, reloc_type);
 	}
 
+	struct btf_array *a;
+	struct btf_type *this;
+
 	// add types for members of parent type (only for struct or union)
 	for (int i = 1; i < targ_spec->raw_len; i++) {
-		if (btf_is_array(btf_type)) {
-			struct btf_array *a = btf_array(btf_type);
 
-			// set the current type to array type and continue processing
-			reloc_type = btf_reloc_get_type(info, a->type);
-
-			btf_type = reloc_type->type;
-
+		if (!targ_spec->spec[i].name)
 			continue;
-		}
 
-		if (!btf_is_struct(btf_type) && !btf_is_union(btf_type)) {
-			printf("received a type not expected\n");
+		switch (btf_kind(btf_type)) {
+		case BTF_KIND_STRUCT:
+		case BTF_KIND_UNION:
+			break;
+		case BTF_KIND_ARRAY:
+			a = btf_array(btf_type);
+			this = (struct btf_type *)btf__type_by_id(btf, a->type);
+			reloc_type = btf_reloc_get_type(info, this);
+			continue;
+		case BTF_KIND_TYPEDEF:
+			reloc_type = btf_reloc_get_type(info, btf_type);
+			btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
+			continue;
+		//case BTF_KIND_INT:
+		//case BTF_KIND_PTR:
+		//case BTF_KIND_ENUM:
+		//case BTF_KIND_FWD:
+		//case BTF_KIND_VOLATILE:
+		//case BTF_KIND_CONST:
+		//case BTF_KIND_RESTRICT:
+		//case BTF_KIND_FUNC:
+		//case BTF_KIND_FUNC_PROTO:
+		//case BTF_KIND_VAR:
+		//case BTF_KIND_DATASEC:
+		//case BTF_KIND_UNKN:
+		default:
+			printf("UNKNOWN btf_type in spec result: %s\n", btf_kind_str(btf_type));
 			return -1;
 		}
 
@@ -1707,7 +1781,7 @@ int bpf_core_apply_relo_insn(const char *prog_name, struct bpf_insn *insn,
 	}
 
 patch_insn:
-	if (reloc_info) {
+	if (reloc_info && targ_res.targ_spec) {
 		err = btf_reloc_info_gen(reloc_info, &targ_res);
 		if (err) {
 			pr_warn("error to generate BTF info\n");
