@@ -1525,19 +1525,8 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 	}
 
 	struct btf_array *a;
-	//struct btf_type *this;
-
 	// add types for members of parent type (only for struct or union)
 	for (int i = 1; i < targ_spec->raw_len; i++) {
-
-		if (!targ_spec->spec[i].name)
-			continue;
-		else {
-			while (btf_is_mod(btf_type) || btf_is_typedef(btf_type)) {
-				reloc_type = btf_reloc_get_type(info, btf_type->type);
-				btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
-			}
-		}
 
 		switch (btf_kind(btf_type)) {
 		case BTF_KIND_STRUCT:
@@ -1545,13 +1534,12 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 			break;
 		case BTF_KIND_ARRAY:
 			a = btf_array(btf_type);
-			//this = (struct btf_type *)btf__type_by_id(btf, a->type);
 			reloc_type = btf_reloc_get_type(info, a->type);
 			continue;
-		//case BTF_KIND_TYPEDEF:
-		//	reloc_type = btf_reloc_get_type(info, btf_type);
-		//	btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
-		//	continue;
+		case BTF_KIND_TYPEDEF:
+			reloc_type = btf_reloc_get_type(info, btf_type->type);
+			btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
+			break;
 		//case BTF_KIND_INT:
 		//case BTF_KIND_PTR:
 		//case BTF_KIND_ENUM:
