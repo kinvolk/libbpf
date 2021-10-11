@@ -1239,12 +1239,6 @@ static void btf_reloc_add_type(struct btf *btf, struct btf_reloc_info *info, str
 
 	unsigned int id = reloc_type->type->type;
 
-	// resolve typedefs
-	// TODOO
-	//if (btf_is_typedef(reloc_type->type)) {
-	//	unsigned int id = reloc_type->type->type;
-	//	struct btf_type *btf_type = (struct btf_type *) btf__type_by_id(btf, id);
-
 	switch (btf_kind(reloc_type->type)) {
 	case BTF_KIND_INT:
 	case BTF_KIND_PTR:
