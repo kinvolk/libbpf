@@ -1244,8 +1244,8 @@ static void btf_reloc_add_type(struct btf *btf, struct btf_reloc_info *info, str
 	case BTF_KIND_PTR:
 	case BTF_KIND_STRUCT:
 	case BTF_KIND_UNION:
-	case BTF_KIND_VOLATILE:
 		break;
+	case BTF_KIND_VOLATILE:
 	case BTF_KIND_TYPEDEF:
 		btf_type = (struct btf_type *) btf__type_by_id(btf, id);
 		if (btf_type == NULL) {
