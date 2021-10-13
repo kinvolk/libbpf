@@ -1696,7 +1696,7 @@ int bpf_core_apply_relo_insn(const char *prog_name, struct bpf_insn *insn,
 			     struct btf_reloc_info *reloc_info)
 {
 	struct bpf_core_spec local_spec, cand_spec, targ_spec = {};
-	struct bpf_core_relo_res cand_res, targ_res;
+	struct bpf_core_relo_res cand_res, targ_res = { .targ_spec = NULL };
 	const struct btf_type *local_type;
 	const char *local_name;
 	__u32 local_id;
