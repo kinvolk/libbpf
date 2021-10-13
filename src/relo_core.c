@@ -1241,6 +1241,7 @@ static void btf_reloc_add_type(struct btf *btf, struct btf_reloc_info *info, str
 
 	switch (btf_kind(reloc_type->type)) {
 	case BTF_KIND_INT:
+	case BTF_KIND_FLOAT:
 	case BTF_KIND_PTR:
 	case BTF_KIND_STRUCT:
 	case BTF_KIND_UNION:
@@ -1518,8 +1519,9 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 
 	struct btf *btf = (struct btf *) targ_spec->btf;
 	struct btf_type *btf_type;
+	struct btf_array *a;
+	struct btf_member *btf_member;
 	struct btf_reloc_type *reloc_type;
-	int err;
 
 	btf_reloc_dump_spec(targ_spec);
 
@@ -1534,9 +1536,6 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		btf_reloc_add_type(btf, info, reloc_type);
 	}
 
-	struct btf_array *a;
-	//struct btf_type *this;
-
 	// add types for members of parent type (only for struct or union)
 	for (int i = 1; i < targ_spec->raw_len; i++) {
 
@@ -1548,17 +1547,33 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		switch (btf_kind(btf_type)) {
 		case BTF_KIND_STRUCT:
 		case BTF_KIND_UNION:
+			btf_member = btf_members(btf_type) + targ_spec->raw_spec[i];
+			btf_type = btf_type_by_id(btf, btf_member->type);
+			// add this as a member of the parent type
+			struct btf_reloc_member *reloc_member;
+			reloc_member = calloc(1, sizeof(struct btf_reloc_member));
+			reloc_member->member = btf_member;
+			reloc_member->idx = targ_spec->raw_spec[i];
+			bpf_reloc_type_add_member(info, reloc_type, reloc_member);
+			// check if we already have a type for this member
+			if ((reloc_type = btf_reloc_get_type(info, btf_type->type)) != NULL) {
+				continue;
+			}
+			// add type for this
+			struct btf_reloc_type *this_type;
+			this_type = calloc(1, sizeof(struct btf_reloc_type));
+			this_type->type = btf_type;
+			this_type->id = btf_member->type;
+			reloc_type = this_type;
+			btf_reloc_add_type(btf, info, this_type);
 			break;
 		case BTF_KIND_ARRAY:
 			a = btf_array(btf_type);
 			//this = (struct btf_type *)btf__type_by_id(btf, a->type);
 			reloc_type = btf_reloc_get_type(info, a->type);
 			continue;
-		//case BTF_KIND_TYPEDEF:
-		//	reloc_type = btf_reloc_get_type(info, btf_type);
-		//	btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
-		//	continue;
 		//case BTF_KIND_INT:
+		//case BTF_KIND_FLOAT:
 		//case BTF_KIND_PTR:
 		//case BTF_KIND_ENUM:
 		//case BTF_KIND_FWD:
@@ -1574,35 +1589,6 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 			printf("UNKNOWN btf_type in spec result: %s\n", btf_kind_str(btf_type));
 			return -1;
 		}
-
-		struct btf_member *btf_member = btf_members(btf_type) + targ_spec->raw_spec[i];
-
-		btf_type = btf_type_by_id(btf, btf_member->type);
-
-		/* add this as a member of the parent type */
-		struct btf_reloc_member *reloc_member;
-		reloc_member = calloc(1, sizeof(struct btf_reloc_member));
-		reloc_member->member = btf_member;
-		reloc_member->idx = targ_spec->raw_spec[i];
-
-		err = bpf_reloc_type_add_member(info, reloc_type, reloc_member);
-		if (err) {
-			libbpf_print(LIBBPF_WARN, "error adding type member %d", err);
-			return err;
-		}
-
-		// check if we already have a type for this member
-		if ((reloc_type = btf_reloc_get_type(info, btf_member->type)) != NULL) {
-			continue;
-		}
-
-		/* add type for this */
-		struct btf_reloc_type *this_type;
-		this_type = calloc(1, sizeof(struct btf_reloc_type));
-		this_type->type = btf_type;
-		this_type->id = btf_member->type;
-		reloc_type = this_type;
-		btf_reloc_add_type(btf, info, this_type);
 	}
 
 	return 0;
