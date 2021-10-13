@@ -1540,13 +1540,9 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 	// add types for members of parent type (only for struct or union)
 	for (int i = 1; i < targ_spec->raw_len; i++) {
 
-		if (!targ_spec->spec[i].name)
-			continue;
-		else {
-			while (btf_is_mod(btf_type) || btf_is_typedef(btf_type)) {
-				reloc_type = btf_reloc_get_type(info, btf_type->type);
-				btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
-			}
+		while (btf_is_mod(btf_type) || btf_is_typedef(btf_type)) {
+			btf_type = (struct btf_type*) btf__type_by_id(btf, btf_type->type);
+			reloc_type = btf_reloc_get_type(info, btf_type->type);
 		}
 
 		switch (btf_kind(btf_type)) {
