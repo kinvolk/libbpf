@@ -1457,7 +1457,7 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 		}
 	}
 
-	/*
+
 	// third: fix sizes
 	hashmap__for_each_entry(info->types, entry, i) {
 		struct btf_reloc_type *reloc_type;
@@ -1476,16 +1476,13 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 			members = btf_members(btf_type);
 
 			for (int i = 0; i < btf_vlen(btf_type); i++) {
-				const struct btf_type *member_type;
-
-				member_type = btf__type_by_id(btf_new, members[i].type);
-				new_size += member_type->size;
+				new_size += btf__resolve_size(btf_new, members[i].type); //->size;
 			}
 
 			btf_type->size = new_size;
 		}
 	}
-	*/
+
 
 	// fourth: dedup
 	struct btf_dedup_opts dedup_opts = {};
