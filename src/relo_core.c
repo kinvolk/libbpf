@@ -1208,7 +1208,14 @@ void bpf_reloc_info_free(struct btf_reloc_info *info) {
 // returns id for new btf instance
 static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int old) {
 	uintptr_t new = 0;
-	hashmap__find(info->ids_map, uint_as_hash_key(old), (void **)&new);
+
+	if (!hashmap__find(info->ids_map, uint_as_hash_key(old), (void **)&new)) {
+		printf("eror getting new id for old: %u\n", old);
+		// TODO: this should never happen. If this happens it means we're
+		// missing a type in ids_map.
+		//exit(1);
+	}
+
 	return (unsigned int)(uintptr_t)new;
 }
 
