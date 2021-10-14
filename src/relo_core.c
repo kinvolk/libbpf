@@ -1171,7 +1171,7 @@ static void bpf_reloc_type_free(struct btf_reloc_type *type) {
 	struct hashmap_entry *entry;
 	int i;
 
-	if (!type)
+	if (IS_ERR_OR_NULL(type))
 		return;
 
 	if (!IS_ERR_OR_NULL(type->members)) {
