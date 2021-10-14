@@ -1236,6 +1236,13 @@ static struct btf_reloc_type *btf_reloc_get_type(struct btf_reloc_info *info, in
 static void btf_reloc_add_type(struct btf *btf, struct btf_reloc_info *info, struct btf_reloc_type *reloc_type) {
 	int err;
 
+	if (reloc_type->id == 0) {
+		printf("somebody is trying to add id 0\n");
+
+		/* do nothing. void is implicit in BTF */
+		return;
+	}
+
 	// append this type to the relocation type's list before anything else
 	err = hashmap__add(info->types, uint_as_hash_key(reloc_type->id), reloc_type);
 	if (err) {
@@ -1390,11 +1397,18 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 			/* set new vlen */
 			btf_type_cpy->info = btf_type_info(btf_kind(btf_type_cpy), nmembers, btf_kflag(btf_type_cpy));
 
-			new_id = btf__add_type(btf_new, info->src_btf, btf_type_cpy);
+			err = btf__add_type(btf_new, info->src_btf, btf_type_cpy);
 			free(btf_type_cpy);
 		} else {
-			new_id = btf__add_type(btf_new, info->src_btf, btf_type);
+			err = btf__add_type(btf_new, info->src_btf, btf_type);
 		}
+
+		if (err < 0) {
+			printf("error adding type\n");
+			goto out;
+		}
+
+		new_id = err;
 
 		/* add ID mapping */
 		btf_reloc_id_add(info, reloc_type->id, new_id);
@@ -1442,7 +1456,6 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 		}
 	}
 
-	/*
 	// third: fix sizes
 	hashmap__for_each_entry(info->types, entry, i) {
 		struct btf_reloc_type *reloc_type;
@@ -1478,7 +1491,6 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 		pr_warn("error calling btf__dedup()\n");
 		goto out;
 	}
-	*/
 
 	return btf_new;
 
