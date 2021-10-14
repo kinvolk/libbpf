@@ -1126,11 +1126,7 @@ static bool bpf_reloc_info_equal_fn(const void *k1, const void *k2, void *ctx)
 	return k1 == k2;
 }
 
-static void *int_as_hash_key(int x) {
-	return (void *)(uintptr_t)x;
-}
-
-static void *u32_as_hash_key(int x) {
+static void *uint_as_hash_key(int x) {
 	return (void *)(uintptr_t)x;
 }
 
@@ -1211,27 +1207,27 @@ void bpf_reloc_info_free(struct btf_reloc_info *info) {
 
 // returns id for new btf instance
 static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int old) {
-	int new = 0;
-	hashmap__find(info->ids_map, int_as_hash_key(old), (void **)&new);
-	return new;
+	uintptr_t new = 0;
+	hashmap__find(info->ids_map, uint_as_hash_key(old), (void **)&new);
+	return (unsigned int)(uintptr_t)new;
 }
 
 // adds new id map to the list of mappings
 static void btf_reloc_id_add(struct btf_reloc_info *info, unsigned int old, unsigned int new) {
-	hashmap__add(info->ids_map, int_as_hash_key(old), int_as_hash_key(new));
+	hashmap__add(info->ids_map, uint_as_hash_key(old), uint_as_hash_key(new));
 }
 
 // get pointer to btf_reloc_type by id
 static struct btf_reloc_type *btf_reloc_get_type(struct btf_reloc_info *info, int id) {
 	struct btf_reloc_type *type = NULL;
-	hashmap__find(info->types, int_as_hash_key(id), (void **)&type);
+	hashmap__find(info->types, uint_as_hash_key(id), (void **)&type);
 	return type;
 }
 
 // add type resolving all typedefs
 static void btf_reloc_add_type(struct btf *btf, struct btf_reloc_info *info, struct btf_reloc_type *reloc_type) {
 	// append this type to the list
-	hashmap__add(info->types, int_as_hash_key(reloc_type->id), reloc_type);
+	hashmap__add(info->types, uint_as_hash_key(reloc_type->id), reloc_type);
 
 	// resolve typedefs
 	if (btf_is_typedef(reloc_type->type)) {
@@ -1293,7 +1289,7 @@ static int bpf_reloc_type_add_member(struct btf_reloc_info *info, struct btf_rel
 		reloc_type->members = tmp;
 	}
 
-	err = hashmap__add(reloc_type->members, u32_as_hash_key(reloc_member->idx), reloc_member);
+	err = hashmap__add(reloc_type->members, uint_as_hash_key(reloc_member->idx), reloc_member);
 	if (err && err != -EEXIST)
 		return err;
 
