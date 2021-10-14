@@ -1209,12 +1209,13 @@ void bpf_reloc_info_free(struct btf_reloc_info *info) {
 static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int old) {
 	uintptr_t new = 0;
 
+	// deal with BTF_KIND_VOID
+	if (old == 0)
+		return 0;
+
 	if (!hashmap__find(info->ids_map, uint_as_hash_key(old), (void **)&new)) {
-		printf("eror getting new id for old: %u\n", old);
-		return (unsigned int)(uintptr_t) 0;
-		// TODO: this should never happen. If this happens it means we're
-		// missing a type in ids_map.
-		//exit(1);
+		printf("error getting new id for old: %u. missing a type in ids_map ?\n", old);
+		exit(1);
 	}
 
 	return (unsigned int)(uintptr_t)new;
@@ -1456,6 +1457,7 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 		}
 	}
 
+	/*
 	// third: fix sizes
 	hashmap__for_each_entry(info->types, entry, i) {
 		struct btf_reloc_type *reloc_type;
@@ -1483,6 +1485,7 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 			btf_type->size = new_size;
 		}
 	}
+	*/
 
 	// fourth: dedup
 	struct btf_dedup_opts dedup_opts = {};
