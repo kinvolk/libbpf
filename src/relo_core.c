@@ -1171,7 +1171,7 @@ static void bpf_reloc_type_free(struct btf_reloc_type *type) {
 	struct hashmap_entry *entry;
 	int i;
 
-	if (!type)
+	if (IS_ERR_OR_NULL(type))
 		return;
 
 	if (!IS_ERR_OR_NULL(type->members)) {
@@ -1226,37 +1226,38 @@ static void btf_reloc_id_add(struct btf_reloc_info *info, unsigned int old, unsi
 	hashmap__add(info->ids_map, uint_as_hash_key(old), uint_as_hash_key(new));
 }
 
-// get pointer to btf_reloc_type by id
-static struct btf_reloc_type *btf_reloc_get_type(struct btf_reloc_info *info, int id) {
-	struct btf_reloc_type *type = NULL;
-	hashmap__find(info->types, uint_as_hash_key(id), (void **)&type);
-	return type;
-}
-
-// add type resolving all typedefs
-static void btf_reloc_add_type(struct btf *btf, struct btf_reloc_info *info, struct btf_reloc_type *reloc_type) {
+/* put type in the list. If the type already exists it's returned, otherwise a
+ * new one is created and added to the list. This is called recursively adding
+ * all the types that are needed for the current one.
+ */
+static struct btf_reloc_type *btf_reloc_put_type(
+	struct btf *btf, struct btf_reloc_info *info, struct btf_type *btf_type,
+	unsigned int id) {
+	struct btf_reloc_type *reloc_type, *tmp;
+	struct btf_array *array;
+	unsigned int child_id;
 	int err;
 
-	if (reloc_type->id == 0) {
-		printf("somebody is trying to add id 0\n");
-
-		/* do nothing. void is implicit in BTF */
-		return;
+	/* check if we already have this type */
+	if (hashmap__find(info->types, uint_as_hash_key(id), (void **) &reloc_type)) {
+		return reloc_type;
 	}
 
-	// append this type to the relocation type's list before anything else
+	/* do nothing. void is implicit in BTF */
+	if (id == 0)
+		return NULL;
+
+	reloc_type = calloc(1, sizeof(struct btf_reloc_type));
+	if (!reloc_type)
+		return ERR_PTR(-ENOMEM);
+
+	reloc_type->type = btf_type;
+	reloc_type->id = id;
+
+	/* append this type to the relocation type's list before anything else */
 	err = hashmap__add(info->types, uint_as_hash_key(reloc_type->id), reloc_type);
-	if (err) {
-		printf("error adding to hashmap: %d. id: %d\n", err, reloc_type->id);
-		// TODO: This function should return an error instead and all caller should check it
-		exit(1);
-	}
-
-	struct btf_array *array;
-	struct btf_type *btf_type;
-	struct btf_reloc_type *current_type;
-
-	unsigned int id = reloc_type->type->type;
+	if (err)
+		return ERR_PTR(err);
 
 	switch (btf_kind(reloc_type->type)) {
 	case BTF_KIND_UNKN:
@@ -1271,36 +1272,30 @@ static void btf_reloc_add_type(struct btf *btf, struct btf_reloc_info *info, str
 	case BTF_KIND_PTR:
 	case BTF_KIND_VOLATILE:
 	case BTF_KIND_TYPEDEF:
-		btf_type = (struct btf_type *) btf__type_by_id(btf, id);
-		if (btf_type == NULL) {
-			return;
-		}
-		current_type = btf_reloc_get_type(info, id);
-		if (!current_type) {
-			current_type = calloc(1, sizeof(*current_type));
-			current_type->type = btf_type;
-			current_type->id = id;
-			btf_reloc_add_type(btf, info, current_type);
-		}
+		child_id = btf_type->type;
+		btf_type = (struct btf_type *) btf__type_by_id(btf, child_id);
+		 if (!btf_type)
+			return ERR_PTR(-EINVAL);
+
+		tmp = btf_reloc_put_type(btf, info, btf_type, child_id);
+		if (IS_ERR(tmp))
+			return tmp;
 		break;
 	case BTF_KIND_ARRAY:
 		array = btf_array(reloc_type->type);
+
+		/* add type for array type */
 		btf_type = (struct btf_type *) btf__type_by_id(btf, array->type);
-		// add type for array type
-		if (!btf_reloc_get_type(info, array->type)) {
-			current_type = calloc(1, sizeof(*current_type));
-			current_type->type = btf_type;
-			current_type->id = array->type;
-			btf_reloc_add_type(btf, info, current_type);
-		}
+		tmp = btf_reloc_put_type(btf, info, btf_type, array->type);
+		if (IS_ERR(tmp))
+			return tmp;
+
+		/* add type for array's index type */
 		btf_type = (struct btf_type *) btf__type_by_id(btf, array->index_type);
-		// add type for array's index type
-		if (!btf_reloc_get_type(info, array->index_type)) {
-			current_type = calloc(1, sizeof(*current_type));
-			current_type->type = btf_type;
-			current_type->id = array->index_type;
-			btf_reloc_add_type(btf, info, current_type);
-		}
+		tmp = btf_reloc_put_type(btf, info, btf_type, array->index_type);
+		if (IS_ERR(tmp))
+			return tmp;
+
 		break;
 		// this will tell us if our bpf objects need other relocation types
 		// to be explicitly supported here
@@ -1315,8 +1310,17 @@ static void btf_reloc_add_type(struct btf *btf, struct btf_reloc_info *info, str
 		break;
 	default:
 		printf("error adding reloc_type: %s\n", btf_kind_str(reloc_type->type));
-		exit(1);
+		return ERR_PTR(-EINVAL);
 	}
+
+	return reloc_type;
+}
+
+// get pointer to btf_reloc_type by id
+static struct btf_reloc_type *btf_reloc_get_type(struct btf_reloc_info *info, int id) {
+	struct btf_reloc_type *type = NULL;
+	hashmap__find(info->types, uint_as_hash_key(id), (void **)&type);
+	return type;
 }
 
 static int bpf_reloc_type_add_member(struct btf_reloc_info *info, struct btf_reloc_type *reloc_type, struct btf_reloc_member *reloc_member) {
@@ -1557,36 +1561,31 @@ static void btf_reloc_dump_spec(struct bpf_core_spec *spec)
 }
 
 static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core_spec *targ_spec) {
-
 	struct btf *btf = (struct btf *) targ_spec->btf;
-	struct btf_type *btf_type;
-	struct btf_array *a;
-	struct btf_member *btf_member;
 	struct btf_reloc_type *reloc_type;
+	struct btf_member *btf_member;
+	struct btf_type *btf_type;
+	struct btf_array *array;
+	unsigned int id;
 	int err;
 
 	btf_reloc_dump_spec(targ_spec);
 
 	btf_type = btf_type_by_id(btf, targ_spec->root_type_id);
 
-	reloc_type = btf_reloc_get_type(info, targ_spec->root_type_id);
-	if (reloc_type == NULL) {
-		reloc_type = calloc(1, sizeof(struct btf_reloc_type));
-		reloc_type->type = btf_type;
-		reloc_type->id = targ_spec->root_type_id;
-		btf_reloc_add_type(btf, info, reloc_type);
-	}
+	/* create reloc type for root type */
+	reloc_type = btf_reloc_put_type(btf, info, btf_type, targ_spec->root_type_id);
+	if (IS_ERR(reloc_type))
+		return PTR_ERR(reloc_type);
 
-	// add types for members of parent type (only for struct or union)
+	/* add types for complex types (arrays, unions, structures) */
 	for (int i = 1; i < targ_spec->raw_len; i++) {
-
+		/* skip typedefs and mods. */
 		while (btf_is_mod(btf_type) || btf_is_typedef(btf_type)) {
-			unsigned id = btf_type->type;
+			id = btf_type->type;
 			reloc_type = btf_reloc_get_type(info, id);
-			if (reloc_type == NULL) {
-				printf("could not find reloc_type\n");
-				exit(1);
-			}
+			if (!reloc_type)
+				return -1;
 			btf_type = (struct btf_type*) btf__type_by_id(btf, id);
 		}
 
@@ -1595,7 +1594,8 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		case BTF_KIND_UNION:
 			btf_member = btf_members(btf_type) + targ_spec->raw_spec[i];
 			btf_type = btf_type_by_id(btf, btf_member->type);
-			// add this as a member of the parent type
+
+			/* add this as a member of the parent type */
 			struct btf_reloc_member *reloc_member;
 			reloc_member = calloc(1, sizeof(struct btf_reloc_member));
 			reloc_member->member = btf_member;
@@ -1604,28 +1604,19 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 			err = bpf_reloc_type_add_member(info, reloc_type, reloc_member);
 			if (err) {
 				printf("error adding member\n");
-				exit(1);
+				return err;
 			}
 
-			// check if we already have a type for this member
-			reloc_type = btf_reloc_get_type(info, btf_member->type);
-			if (reloc_type != NULL) {
-				continue;
-			}
-
-			// add type for this member
-			struct btf_reloc_type *this_type;
-			this_type = calloc(1, sizeof(struct btf_reloc_type));
-			this_type->type = btf_type;
-			this_type->id = btf_member->type;
-			reloc_type = this_type;
-			btf_reloc_add_type(btf, info, this_type);
+			reloc_type = btf_reloc_put_type(btf, info, btf_type, btf_member->type);
+			if (IS_ERR(reloc_type))
+				return PTR_ERR(reloc_type);
 			break;
 		case BTF_KIND_ARRAY:
-			a = btf_array(btf_type);
-			//this = (struct btf_type *)btf__type_by_id(btf, a->type);
-			reloc_type = btf_reloc_get_type(info, a->type);
-			btf_type = (struct btf_type *) btf__type_by_id(btf, a->type);
+			array = btf_array(btf_type);
+			reloc_type = btf_reloc_get_type(info, array->type);
+			if (!reloc_type)
+				return -1;
+			btf_type = (struct btf_type *) btf__type_by_id(btf, array->type);
 			break;
 		//case BTF_KIND_INT:
 		//case BTF_KIND_FLOAT:
