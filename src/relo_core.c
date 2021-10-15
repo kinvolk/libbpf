@@ -1461,37 +1461,7 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 		}
 	}
 
-	/*
-	// third: fix sizes
-	hashmap__for_each_entry(info->types, entry, i) {
-		struct btf_reloc_type *reloc_type;
-		struct btf_type *btf_type;
-		unsigned int new_type_id;
-
-		reloc_type = entry->value;
-		new_type_id = btf_reloc_id_get(info, reloc_type->id);
-		btf_type = (struct btf_type *) btf__type_by_id(btf_new, new_type_id);
-
-		// only for structs and unions
-		if (btf_is_union(btf_type) || btf_is_struct(btf_type)) {
-			struct btf_member *members;
-			__u32 new_size = 0;
-
-			members = btf_members(btf_type);
-
-			for (int i = 0; i < btf_vlen(btf_type); i++) {
-				const struct btf_type *member_type;
-
-				member_type = btf__type_by_id(btf_new, members[i].type);
-				new_size += member_type->size;
-			}
-
-			btf_type->size = new_size;
-		}
-	}
-	*/
-
-	// fourth: dedup
+	/* deduplicate generated BTF */
 	struct btf_dedup_opts dedup_opts = {};
 	err = btf__dedup(btf_new, NULL, &dedup_opts);
 	if (err) {
@@ -1580,6 +1550,7 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 
 	/* add types for complex types (arrays, unions, structures) */
 	for (int i = 1; i < targ_spec->raw_len; i++) {
+
 		/* skip typedefs and mods. */
 		while (btf_is_mod(btf_type) || btf_is_typedef(btf_type)) {
 			id = btf_type->type;
@@ -1615,21 +1586,8 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 				return PTR_ERR(reloc_type);
 			btf_type = (struct btf_type *) btf__type_by_id(btf, array->type);
 			break;
-		//case BTF_KIND_INT:
-		//case BTF_KIND_FLOAT:
-		//case BTF_KIND_PTR:
-		//case BTF_KIND_ENUM:
-		//case BTF_KIND_FWD:
-		//case BTF_KIND_VOLATILE:
-		//case BTF_KIND_CONST:
-		//case BTF_KIND_RESTRICT:
-		//case BTF_KIND_FUNC:
-		//case BTF_KIND_FUNC_PROTO:
-		//case BTF_KIND_VAR:
-		//case BTF_KIND_DATASEC:
-		//case BTF_KIND_UNKN:
 		default:
-			printf("UNKNOWN btf_type in spec result: %s\n", btf_kind_str(btf_type));
+			printf("spec type wasn't handled: %s\n", btf_kind_str(btf_type));
 			return 1;
 		}
 	}
