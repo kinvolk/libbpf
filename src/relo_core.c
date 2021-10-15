@@ -1584,8 +1584,8 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		while (btf_is_mod(btf_type) || btf_is_typedef(btf_type)) {
 			id = btf_type->type;
 			reloc_type = btf_reloc_get_type(info, id);
-			if (!reloc_type)
-				return -1;
+			if (IS_ERR(reloc_type))
+				return PTR_ERR(reloc_type);
 			btf_type = (struct btf_type*) btf__type_by_id(btf, id);
 		}
 
@@ -1602,11 +1602,8 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 			reloc_member->idx = targ_spec->raw_spec[i];
 
 			err = bpf_reloc_type_add_member(info, reloc_type, reloc_member);
-			if (err) {
-				printf("error adding member\n");
+			if (err)
 				return err;
-			}
-
 			reloc_type = btf_reloc_put_type(btf, info, btf_type, btf_member->type);
 			if (IS_ERR(reloc_type))
 				return PTR_ERR(reloc_type);
@@ -1614,8 +1611,8 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		case BTF_KIND_ARRAY:
 			array = btf_array(btf_type);
 			reloc_type = btf_reloc_get_type(info, array->type);
-			if (!reloc_type)
-				return -1;
+			if (IS_ERR(reloc_type))
+				return PTR_ERR(reloc_type);
 			btf_type = (struct btf_type *) btf__type_by_id(btf, array->type);
 			break;
 		//case BTF_KIND_INT:
@@ -1633,7 +1630,7 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		//case BTF_KIND_UNKN:
 		default:
 			printf("UNKNOWN btf_type in spec result: %s\n", btf_kind_str(btf_type));
-			return -1;
+			return 1;
 		}
 	}
 
