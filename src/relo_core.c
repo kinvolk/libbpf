@@ -1230,9 +1230,10 @@ static void btf_reloc_id_add(struct btf_reloc_info *info, unsigned int old, unsi
  * new one is created and added to the list. This is called recursively adding
  * all the types that are needed for the current one.
  */
-static struct btf_reloc_type *btf_reloc_put_type(
-	struct btf *btf, struct btf_reloc_info *info, struct btf_type *btf_type,
-	unsigned int id) {
+static struct btf_reloc_type *btf_reloc_put_type(struct btf *btf,
+						 struct btf_reloc_info *info,
+						 struct btf_type *btf_type,
+						 unsigned int id) {
 	struct btf_reloc_type *reloc_type, *tmp;
 	struct btf_array *array;
 	unsigned int child_id;
@@ -1259,15 +1260,17 @@ static struct btf_reloc_type *btf_reloc_put_type(
 	if (err)
 		return ERR_PTR(err);
 
+	/* complex types might need further processing */
 	switch (btf_kind(reloc_type->type)) {
+	/* already processed */
 	case BTF_KIND_UNKN:
 	case BTF_KIND_INT:
 	case BTF_KIND_FLOAT:
-		break;
+	/* processed by callee */
 	case BTF_KIND_STRUCT:
 	case BTF_KIND_UNION:
-		// dealt by caller
 		break;
+	/* needs resolution */
 	case BTF_KIND_CONST:
 	case BTF_KIND_PTR:
 	case BTF_KIND_VOLATILE:
@@ -1281,6 +1284,7 @@ static struct btf_reloc_type *btf_reloc_put_type(
 		if (IS_ERR(tmp))
 			return tmp;
 		break;
+	/* needs resolution */
 	case BTF_KIND_ARRAY:
 		array = btf_array(reloc_type->type);
 
@@ -1297,19 +1301,9 @@ static struct btf_reloc_type *btf_reloc_put_type(
 			return tmp;
 
 		break;
-		// this will tell us if our bpf objects need other relocation types
-		// to be explicitly supported here
-	case BTF_KIND_ENUM:
-	case BTF_KIND_FWD:
-	case BTF_KIND_RESTRICT:
-	case BTF_KIND_FUNC:
-	case BTF_KIND_FUNC_PROTO:
-	case BTF_KIND_VAR:
-	case BTF_KIND_DATASEC:
-		printf("unsupported relocation: %s\n", btf_kind_str(reloc_type->type));
-		break;
+	/* tells if some other type needs to be handled */
 	default:
-		printf("error adding reloc_type: %s\n", btf_kind_str(reloc_type->type));
+		printf("unsupported relocation: %s\n", btf_kind_str(reloc_type->type));
 		return ERR_PTR(-EINVAL);
 	}
 
