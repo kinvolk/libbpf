@@ -1317,22 +1317,33 @@ static struct btf_reloc_type *btf_reloc_get_type(struct btf_reloc_info *info, in
 	return type;
 }
 
-static int bpf_reloc_type_add_member(struct btf_reloc_info *info, struct btf_reloc_type *reloc_type, struct btf_reloc_member *reloc_member) {
+static int bpf_reloc_type_add_member(struct btf_reloc_info *info,
+				     struct btf_reloc_type *reloc_type,
+				     struct btf_member *btf_member, int idx) {
 	int err;
+	struct btf_reloc_member *reloc_member;
 
+	/* create new members hashmap for this relocation type if needed */
 	if (reloc_type->members == NULL) {
-		struct hashmap *tmp;
-
-		tmp = hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
+		struct hashmap *tmp = hashmap__new(bpf_reloc_info_hash_fn,
+						   bpf_reloc_info_equal_fn,
+						   NULL);
 		if (IS_ERR(tmp))
 			return PTR_ERR(tmp);
 
 		reloc_type->members = tmp;
 	}
-
+	/* add given btf_member as a member of the parent relocation_type's type */
+	reloc_member = calloc(1, sizeof(struct btf_reloc_member));
+	reloc_member->member = btf_member;
+	reloc_member->idx = idx;
+	/* add given btf_member as member to given relocation type */
 	err = hashmap__add(reloc_type->members, uint_as_hash_key(reloc_member->idx), reloc_member);
-	if (err && err != -EEXIST)
-		return err;
+	if (err) {
+		free(reloc_member);
+		if (err != -EEXIST)
+			return err;
+	}
 
 	return 0;
 }
@@ -1531,7 +1542,7 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 	struct btf_type *btf_type;
 	struct btf_array *array;
 	unsigned int id;
-	int err;
+	int idx, err;
 
 	btf_reloc_dump_spec(targ_spec);
 
@@ -1557,18 +1568,15 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 		switch (btf_kind(btf_type)) {
 		case BTF_KIND_STRUCT:
 		case BTF_KIND_UNION:
-			btf_member = btf_members(btf_type) + targ_spec->raw_spec[i];
+			idx = targ_spec->raw_spec[i];
+			btf_member = btf_members(btf_type) + idx;
 			btf_type = btf_type_by_id(btf, btf_member->type);
 
-			/* add this as a member of the parent type */
-			struct btf_reloc_member *reloc_member;
-			reloc_member = calloc(1, sizeof(*reloc_member));
-			reloc_member->member = btf_member;
-			reloc_member->idx = targ_spec->raw_spec[i];
-
-			err = bpf_reloc_type_add_member(info, reloc_type, reloc_member);
+			/* add member to relocation type */
+			err = bpf_reloc_type_add_member(info, reloc_type, btf_member, idx);
 			if (err)
 				return err;
+			/* add relocation type */
 			reloc_type = btf_reloc_put_type(btf, info, btf_type, btf_member->type);
 			if (IS_ERR(reloc_type))
 				return PTR_ERR(reloc_type);
