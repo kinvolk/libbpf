@@ -1159,7 +1159,7 @@ struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
 	types = hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
 	if (IS_ERR(types)) {
 		bpf_reloc_info_free(info);
-		return (void *)types;
+		return (void *) types;
 	}
 
 	info->types = types;
@@ -1313,7 +1313,11 @@ static struct btf_reloc_type *btf_reloc_put_type(struct btf *btf,
 // get pointer to btf_reloc_type by id
 static struct btf_reloc_type *btf_reloc_get_type(struct btf_reloc_info *info, int id) {
 	struct btf_reloc_type *type = NULL;
+
 	hashmap__find(info->types, uint_as_hash_key(id), (void **)&type);
+	if (type == NULL)
+		return ERR_PTR(-ENOENT);
+
 	return type;
 }
 
