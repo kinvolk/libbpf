@@ -1338,7 +1338,9 @@ static int bpf_reloc_type_add_member(struct btf_reloc_info *info,
 		reloc_type->members = tmp;
 	}
 	/* add given btf_member as a member of the parent relocation_type's type */
-	reloc_member = calloc(1, sizeof(struct btf_reloc_member));
+	reloc_member = calloc(1, sizeof(*reloc_member));
+	if (!reloc_member)
+		return -ENOMEM;
 	reloc_member->member = btf_member;
 	reloc_member->idx = idx;
 	/* add given btf_member as member to given relocation type */
