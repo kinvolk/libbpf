@@ -1136,7 +1136,7 @@ struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
 	struct hashmap *ids_map;
 	struct hashmap *types;
 
-	info = calloc(1, sizeof(struct btf_reloc_info));
+	info = calloc(1, sizeof(*info));
 	if (!info)
 		return ERR_PTR(-ENOMEM);
 
@@ -1247,7 +1247,7 @@ static struct btf_reloc_type *btf_reloc_put_type(
 	if (id == 0)
 		return NULL;
 
-	reloc_type = calloc(1, sizeof(struct btf_reloc_type));
+	reloc_type = calloc(1, sizeof(*reloc_type));
 	if (!reloc_type)
 		return ERR_PTR(-ENOMEM);
 
@@ -1597,7 +1597,7 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 
 			/* add this as a member of the parent type */
 			struct btf_reloc_member *reloc_member;
-			reloc_member = calloc(1, sizeof(struct btf_reloc_member));
+			reloc_member = calloc(1, sizeof(*reloc_member));
 			reloc_member->member = btf_member;
 			reloc_member->idx = targ_spec->raw_spec[i];
 
