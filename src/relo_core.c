@@ -1148,7 +1148,7 @@ struct btf_reloc_info *bpf_reloc_info__new(const char *targ_btf_path) {
 
 	info->src_btf = src_btf;
 
-	ids_map= hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
+	ids_map = hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
 	if (IS_ERR(ids_map)) {
 		bpf_reloc_info__free(info);
 		return (void *) ids_map;
