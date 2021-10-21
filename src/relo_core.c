@@ -1374,19 +1374,20 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 		if (btf_is_struct(btf_type) || btf_is_union(btf_type)) {
 			struct hashmap_entry *member_entry;
 			struct btf_type *btf_type_cpy;
-			int nmembers, new_size, bkt, index;
+			int nmembers, bkt, index;
+			size_t new_size;
 
 			nmembers = reloc_type->members ? hashmap__size(reloc_type->members) : 0;
 			new_size = sizeof(struct btf_type) + nmembers * sizeof(struct btf_member);
 
-			btf_type_cpy = calloc(1, new_size);
-			if (btf_type_cpy == NULL) {
+			btf_type_cpy = malloc(new_size);
+			if (!btf_type_cpy) {
 				err = -ENOMEM;
 				goto out;
 			}
 
 			/* copy header */
-			memcpy(btf_type_cpy, btf_type, sizeof(struct btf_type));
+			memcpy(btf_type_cpy, btf_type, sizeof(*btf_type_cpy));
 
 			/* copy only members that are needed */
 			index = 0;
