@@ -1314,8 +1314,7 @@ static struct btf_reloc_type *btf_reloc_put_type(struct btf *btf,
 static struct btf_reloc_type *btf_reloc_get_type(struct btf_reloc_info *info, int id) {
 	struct btf_reloc_type *type = NULL;
 
-	hashmap__find(info->types, uint_as_hash_key(id), (void **)&type);
-	if (type == NULL)
+	if (!hashmap__find(info->types, uint_as_hash_key(id), (void **)&type))
 		return ERR_PTR(-ENOENT);
 
 	return type;
