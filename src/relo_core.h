@@ -90,9 +90,9 @@ struct bpf_core_cand_list {
 
 struct btf_reloc_info;
 
-struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path);
-void bpf_reloc_info_free(struct btf_reloc_info *);
-struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info);
+LIBBPF_API struct btf_reloc_info *bpf_reloc_info__new(const char *targ_btf_path);
+LIBBPF_API void bpf_reloc_info__free(struct btf_reloc_info *);
+LIBBPF_API struct btf *bpf_reloc_info__get_btf(struct btf_reloc_info *info);
 
 struct btf *bpf_reloc_info_get_src_btf(struct btf_reloc_info *info);
 

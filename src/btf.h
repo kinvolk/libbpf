@@ -30,8 +30,6 @@ enum btf_endianness {
 	BTF_BIG_ENDIAN = 1,
 };
 
-LIBBPF_API int btf__save_to_file(struct btf *btf, const char *path);
-
 LIBBPF_API void btf__free(struct btf *btf);
 
 LIBBPF_API struct btf *btf__new(const void *data, __u32 size);
@@ -53,6 +51,8 @@ LIBBPF_API struct btf *libbpf_find_kernel_btf(void);
 LIBBPF_API struct btf *btf__load_from_kernel_by_id(__u32 id);
 LIBBPF_API struct btf *btf__load_from_kernel_by_id_split(__u32 id, struct btf *base_btf);
 LIBBPF_API int btf__get_from_id(__u32 id, struct btf **btf);
+
+LIBBPF_API int btf__save_to_file(struct btf *btf, const char *path);
 
 LIBBPF_API int btf__finalize_data(struct bpf_object *obj, struct btf *btf);
 LIBBPF_API int btf__load(struct btf *btf);

@@ -1130,7 +1130,7 @@ static void *uint_as_hash_key(int x) {
 	return (void *)(uintptr_t)x;
 }
 
-struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
+struct btf_reloc_info *bpf_reloc_info__new(const char *targ_btf_path) {
 	struct btf_reloc_info *info;
 	struct btf *src_btf;
 	struct hashmap *ids_map;
@@ -1142,7 +1142,7 @@ struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
 
 	src_btf = btf__parse(targ_btf_path, NULL);
 	if (libbpf_get_error(src_btf)) {
-		bpf_reloc_info_free(info);
+		bpf_reloc_info__free(info);
 		return (void *) src_btf;
 	}
 
@@ -1150,7 +1150,7 @@ struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
 
 	ids_map= hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
 	if (IS_ERR(ids_map)) {
-		bpf_reloc_info_free(info);
+		bpf_reloc_info__free(info);
 		return (void *) ids_map;
 	}
 
@@ -1158,7 +1158,7 @@ struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
 
 	types = hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
 	if (IS_ERR(types)) {
-		bpf_reloc_info_free(info);
+		bpf_reloc_info__free(info);
 		return (void *) types;
 	}
 
@@ -1184,7 +1184,7 @@ static void bpf_reloc_type_free(struct btf_reloc_type *type) {
 	free(type);
 }
 
-void bpf_reloc_info_free(struct btf_reloc_info *info) {
+void bpf_reloc_info__free(struct btf_reloc_info *info) {
 	struct hashmap_entry *entry;
 	int i;
 
@@ -1353,7 +1353,7 @@ static int bpf_reloc_type_add_member(struct btf_reloc_info *info,
 	return 0;
 }
 
-struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
+struct btf *bpf_reloc_info__get_btf(struct btf_reloc_info *info) {
 	struct hashmap_entry *entry;
 	struct btf *btf_new;
 	int err, i;
