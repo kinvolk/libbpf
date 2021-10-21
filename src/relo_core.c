@@ -1214,7 +1214,7 @@ static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int o
 		return 0;
 
 	if (!hashmap__find(info->ids_map, uint_as_hash_key(old), (void **)&new)) {
-		printf("error getting new id for old: %u. missing a type in ids_map ?\n", old);
+		pr_warn("error getting new id for old: %u. missing a type in ids_map?\n", old);
 		exit(1);
 	}
 
@@ -1303,7 +1303,7 @@ static struct btf_reloc_type *btf_reloc_put_type(struct btf *btf,
 		break;
 	/* tells if some other type needs to be handled */
 	default:
-		printf("unsupported relocation: %s\n", btf_kind_str(reloc_type->type));
+		pr_warn("unsupported relocation: %s\n", btf_kind_str(reloc_type->type));
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -1376,11 +1376,6 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 			struct btf_type *btf_type_cpy;
 			int nmembers, new_size, bkt, index;
 
-			if (reloc_type->members == NULL) {
-				printf("members for %s is NULL. reloc_type %p. id %d\n",
-					btf__str_by_offset(info->src_btf, btf_type->name_off), reloc_type, reloc_type->id);
-			}
-
 			nmembers = reloc_type->members ? hashmap__size(reloc_type->members) : 0;
 			new_size = sizeof(struct btf_type) + nmembers * sizeof(struct btf_member);
 
@@ -1418,10 +1413,8 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 			err = btf__add_type(btf_new, info->src_btf, btf_type);
 		}
 
-		if (err < 0) {
-			printf("error adding type\n");
+		if (err < 0)
 			goto out;
-		}
 
 		new_id = err;
 
@@ -1594,7 +1587,7 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 			btf_type = (struct btf_type *) btf__type_by_id(btf, array->type);
 			break;
 		default:
-			printf("spec type wasn't handled: %s\n", btf_kind_str(btf_type));
+			pr_warn("spec type wasn't handled: %s\n", btf_kind_str(btf_type));
 			return 1;
 		}
 	}
@@ -1603,13 +1596,13 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 }
 
 static int btf_reloc_info_gen_type(struct btf_reloc_info *info, struct bpf_core_spec *targ_spec) {
-	printf("WARNING: untreated type based relocation\n");
-	return -1;
+	pr_warn("untreated type based relocation\n");
+	return -EOPNOTSUPP;
 }
 
 static int btf_reloc_info_gen_enumval(struct btf_reloc_info *info, struct bpf_core_spec *targ_spec) {
-	printf("WARNING: untreated enumval based relocation\n");
-	return 0;
+	pr_warn("untreated enumval based relocation\n");
+	return -EOPNOTSUPP;
 }
 
 static int btf_reloc_info_gen(struct btf_reloc_info *info, struct bpf_core_relo_res *res) {
