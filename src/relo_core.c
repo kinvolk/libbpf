@@ -1222,8 +1222,8 @@ static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int o
 }
 
 // adds new id map to the list of mappings
-static void btf_reloc_id_add(struct btf_reloc_info *info, unsigned int old, unsigned int new) {
-	hashmap__add(info->ids_map, uint_as_hash_key(old), uint_as_hash_key(new));
+static int btf_reloc_id_add(struct btf_reloc_info *info, unsigned int old, unsigned int new) {
+	return hashmap__add(info->ids_map, uint_as_hash_key(old), uint_as_hash_key(new));
 }
 
 /* put type in the list. If the type already exists it's returned, otherwise a
@@ -1420,7 +1420,9 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 		new_id = err;
 
 		/* add ID mapping */
-		btf_reloc_id_add(info, reloc_type->id, new_id);
+		err = btf_reloc_id_add(info, reloc_type->id, new_id);
+		if (err)
+			goto out;
 	}
 
 	/* second pass: fix up type ids */
