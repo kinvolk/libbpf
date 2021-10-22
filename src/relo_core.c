@@ -1130,7 +1130,7 @@ static void *uint_as_hash_key(int x) {
 	return (void *)(uintptr_t)x;
 }
 
-struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
+struct btf_reloc_info *bpf_reloc_info__new(const char *targ_btf_path) {
 	struct btf_reloc_info *info;
 	struct btf *src_btf;
 	struct hashmap *ids_map;
@@ -1142,15 +1142,15 @@ struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
 
 	src_btf = btf__parse(targ_btf_path, NULL);
 	if (libbpf_get_error(src_btf)) {
-		bpf_reloc_info_free(info);
+		bpf_reloc_info__free(info);
 		return (void *) src_btf;
 	}
 
 	info->src_btf = src_btf;
 
-	ids_map= hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
+	ids_map = hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
 	if (IS_ERR(ids_map)) {
-		bpf_reloc_info_free(info);
+		bpf_reloc_info__free(info);
 		return (void *) ids_map;
 	}
 
@@ -1158,7 +1158,7 @@ struct btf_reloc_info *bpf_reloc_info_new(const char *targ_btf_path) {
 
 	types = hashmap__new(bpf_reloc_info_hash_fn, bpf_reloc_info_equal_fn, NULL);
 	if (IS_ERR(types)) {
-		bpf_reloc_info_free(info);
+		bpf_reloc_info__free(info);
 		return (void *) types;
 	}
 
@@ -1184,7 +1184,7 @@ static void bpf_reloc_type_free(struct btf_reloc_type *type) {
 	free(type);
 }
 
-void bpf_reloc_info_free(struct btf_reloc_info *info) {
+void bpf_reloc_info__free(struct btf_reloc_info *info) {
 	struct hashmap_entry *entry;
 	int i;
 
@@ -1214,7 +1214,7 @@ static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int o
 		return 0;
 
 	if (!hashmap__find(info->ids_map, uint_as_hash_key(old), (void **)&new)) {
-		printf("error getting new id for old: %u. missing a type in ids_map ?\n", old);
+		pr_warn("error getting new id for old: %u. missing a type in ids_map?\n", old);
 		exit(1);
 	}
 
@@ -1222,8 +1222,8 @@ static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int o
 }
 
 // adds new id map to the list of mappings
-static void btf_reloc_id_add(struct btf_reloc_info *info, unsigned int old, unsigned int new) {
-	hashmap__add(info->ids_map, uint_as_hash_key(old), uint_as_hash_key(new));
+static int btf_reloc_id_add(struct btf_reloc_info *info, unsigned int old, unsigned int new) {
+	return hashmap__add(info->ids_map, uint_as_hash_key(old), uint_as_hash_key(new));
 }
 
 /* put type in the list. If the type already exists it's returned, otherwise a
@@ -1303,7 +1303,7 @@ static struct btf_reloc_type *btf_reloc_put_type(struct btf *btf,
 		break;
 	/* tells if some other type needs to be handled */
 	default:
-		printf("unsupported relocation: %s\n", btf_kind_str(reloc_type->type));
+		pr_warn("unsupported relocation: %s\n", btf_kind_str(reloc_type->type));
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -1353,7 +1353,7 @@ static int bpf_reloc_type_add_member(struct btf_reloc_info *info,
 	return 0;
 }
 
-struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
+struct btf *bpf_reloc_info__get_btf(struct btf_reloc_info *info) {
 	struct hashmap_entry *entry;
 	struct btf *btf_new;
 	int err, i;
@@ -1374,24 +1374,20 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 		if (btf_is_struct(btf_type) || btf_is_union(btf_type)) {
 			struct hashmap_entry *member_entry;
 			struct btf_type *btf_type_cpy;
-			int nmembers, new_size, bkt, index;
-
-			if (reloc_type->members == NULL) {
-				printf("members for %s is NULL. reloc_type %p. id %d\n",
-					btf__str_by_offset(info->src_btf, btf_type->name_off), reloc_type, reloc_type->id);
-			}
+			int nmembers, bkt, index;
+			size_t new_size;
 
 			nmembers = reloc_type->members ? hashmap__size(reloc_type->members) : 0;
 			new_size = sizeof(struct btf_type) + nmembers * sizeof(struct btf_member);
 
-			btf_type_cpy = calloc(1, new_size);
-			if (btf_type_cpy == NULL) {
+			btf_type_cpy = malloc(new_size);
+			if (!btf_type_cpy) {
 				err = -ENOMEM;
 				goto out;
 			}
 
 			/* copy header */
-			memcpy(btf_type_cpy, btf_type, sizeof(struct btf_type));
+			memcpy(btf_type_cpy, btf_type, sizeof(*btf_type_cpy));
 
 			/* copy only members that are needed */
 			index = 0;
@@ -1418,15 +1414,15 @@ struct btf *bpf_reloc_info_get_btf(struct btf_reloc_info *info) {
 			err = btf__add_type(btf_new, info->src_btf, btf_type);
 		}
 
-		if (err < 0) {
-			printf("error adding type\n");
+		if (err < 0)
 			goto out;
-		}
 
 		new_id = err;
 
 		/* add ID mapping */
-		btf_reloc_id_add(info, reloc_type->id, new_id);
+		err = btf_reloc_id_add(info, reloc_type->id, new_id);
+		if (err)
+			goto out;
 	}
 
 	/* second pass: fix up type ids */
@@ -1594,7 +1590,7 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 			btf_type = (struct btf_type *) btf__type_by_id(btf, array->type);
 			break;
 		default:
-			printf("spec type wasn't handled: %s\n", btf_kind_str(btf_type));
+			pr_warn("spec type wasn't handled: %s\n", btf_kind_str(btf_type));
 			return 1;
 		}
 	}
@@ -1603,13 +1599,13 @@ static int btf_reloc_info_gen_field(struct btf_reloc_info *info, struct bpf_core
 }
 
 static int btf_reloc_info_gen_type(struct btf_reloc_info *info, struct bpf_core_spec *targ_spec) {
-	printf("WARNING: untreated type based relocation\n");
-	return -1;
+	pr_warn("untreated type based relocation\n");
+	return -EOPNOTSUPP;
 }
 
 static int btf_reloc_info_gen_enumval(struct btf_reloc_info *info, struct bpf_core_spec *targ_spec) {
-	printf("WARNING: untreated enumval based relocation\n");
-	return 0;
+	pr_warn("untreated enumval based relocation\n");
+	return -EOPNOTSUPP;
 }
 
 static int btf_reloc_info_gen(struct btf_reloc_info *info, struct bpf_core_relo_res *res) {
