@@ -1205,11 +1205,11 @@ void bpf_reloc_info__free(struct btf_reloc_info *info) {
 	free(info);
 }
 
-// returns id for new btf instance
+/* Return id for type in new btf instance */
 static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int old) {
 	uintptr_t new = 0;
 
-	// deal with BTF_KIND_VOID
+	/* deal with BTF_KIND_VOID */
 	if (old == 0)
 		return 0;
 
@@ -1221,12 +1221,13 @@ static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int o
 	return (unsigned int)(uintptr_t)new;
 }
 
-// adds new id map to the list of mappings
+/* Add new id map to the list of mappings */
 static int btf_reloc_id_add(struct btf_reloc_info *info, unsigned int old, unsigned int new) {
 	return hashmap__add(info->ids_map, uint_as_hash_key(old), uint_as_hash_key(new));
 }
 
-/* put type in the list. If the type already exists it's returned, otherwise a
+/*
+ * Put type in the list. If the type already exists it's returned, otherwise a
  * new one is created and added to the list. This is called recursively adding
  * all the types that are needed for the current one.
  */
@@ -1310,7 +1311,7 @@ static struct btf_reloc_type *btf_reloc_put_type(struct btf *btf,
 	return reloc_type;
 }
 
-// get pointer to btf_reloc_type by id
+/* Return pointer to btf_reloc_type by id */
 static struct btf_reloc_type *btf_reloc_get_type(struct btf_reloc_info *info, int id) {
 	struct btf_reloc_type *type = NULL;
 
@@ -1426,7 +1427,6 @@ struct btf *bpf_reloc_info__get_btf(struct btf_reloc_info *info) {
 	}
 
 	/* second pass: fix up type ids */
-	// TODO: this could be an another function
 	for (int i = 0; i <= btf__get_nr_types(btf_new); i++) {
 		struct btf_member *btf_member;
 		struct btf_type *btf_type;
