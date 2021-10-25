@@ -1214,8 +1214,10 @@ static unsigned int btf_reloc_id_get(struct btf_reloc_info *info, unsigned int o
 		return 0;
 
 	if (!hashmap__find(info->ids_map, uint_as_hash_key(old), (void **)&new)) {
-		pr_warn("error getting new id for old: %u. missing a type in ids_map?\n", old);
-		exit(1);
+		/* return id for void as it's possible that the ID we're looking for is
+		 * the type of a pointer that we're not adding.
+		 */
+		return 0;
 	}
 
 	return (unsigned int)(uintptr_t)new;
@@ -1270,10 +1272,13 @@ static struct btf_reloc_type *btf_reloc_put_type(struct btf *btf,
 	/* processed by callee */
 	case BTF_KIND_STRUCT:
 	case BTF_KIND_UNION:
+	/* doesn't need resolution. If the data of the pointer is used
+	 * then it'll added by the caller in another relocation.
+	 */
+	case BTF_KIND_PTR:
 		break;
 	/* needs resolution */
 	case BTF_KIND_CONST:
-	case BTF_KIND_PTR:
 	case BTF_KIND_VOLATILE:
 	case BTF_KIND_TYPEDEF:
 		child_id = btf_type->type;
