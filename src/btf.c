@@ -4666,24 +4666,21 @@ int btf_ext_visit_str_offs(struct btf_ext *btf_ext, str_off_visit_fn visit, void
 
 int btf__save_to_file(struct btf *btf, const char *path) {
 	const void *data;
-	unsigned int size;
+	__u32 data_sz;
 	FILE *file;
 
-	data = btf__get_raw_data(btf, &size);
-	if (data == NULL)
-		return -1;
+	data = btf_get_raw_data(btf, &data_sz, btf->swapped_endian);
+	if (!data)
+		return -ENOMEM;
 
 	file = fopen(path, "wb");
-	if (file == NULL)
-		return -1;
+	if (!file)
+		return -errno;
 
-	if (fwrite(data, 1, size, file) != size) {
+	if (fwrite(data, 1, data_sz, file) != data_sz) {
 		fclose(file);
-		return -1;
+		return -EIO;
 	}
 
-	if (fclose(file) != 0)
-		return -1;
-
-	return 0;
+	return fclose(file);
 }
