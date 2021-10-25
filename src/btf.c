@@ -1118,6 +1118,32 @@ struct btf *btf__parse_split(const char *path, struct btf *base_btf)
 	return libbpf_ptr(btf_parse(path, base_btf, NULL));
 }
 
+int btf__save_raw(const struct btf *btf, const char *path)
+{
+	const void *data;
+	__u32 data_sz;
+	FILE *file;
+	int err;
+
+	data = btf__raw_data(btf, &data_sz);
+	if (!data)
+		return libbpf_err(-ENOMEM);
+
+	file = fopen(path, "wb");
+	if (!file)
+		return -errno;
+
+	if (fwrite(data, 1, data_sz, file) != data_sz) {
+		err = -errno;
+		fclose(file);
+		return err;
+	}
+
+	fclose(file);
+
+	return 0;
+}
+
 static void *btf_get_raw_data(const struct btf *btf, __u32 *size, bool swap_endian);
 
 int btf__load_into_kernel(struct btf *btf)
