@@ -1617,19 +1617,16 @@ static int btf_reloc_info_gen(struct btf_reloc_info *info, struct bpf_core_relo_
 
 	struct bpf_core_spec *spec = (struct bpf_core_spec *) res->targ_spec;
 
-	if (core_relo_is_type_based(spec->relo_kind)) {
+	if (core_relo_is_type_based(spec->relo_kind))
 		return btf_reloc_info_gen_type(info, spec);
-	}
 
-	if (core_relo_is_enumval_based(spec->relo_kind)) {
+	if (core_relo_is_enumval_based(spec->relo_kind))
 		return btf_reloc_info_gen_enumval(info, spec);
-	}
 
-	if (core_relo_is_field_based(spec->relo_kind)) {
+	if (core_relo_is_field_based(spec->relo_kind))
 		return btf_reloc_info_gen_field(info, spec);
-	}
 
-	return -1;
+	return -EINVAL;
 }
 
 /*
@@ -1826,12 +1823,10 @@ int bpf_core_apply_relo_insn(const char *prog_name, struct bpf_insn *insn,
 patch_insn:
 	if (reloc_info && targ_res.targ_spec) {
 		err = btf_reloc_info_gen(reloc_info, &targ_res);
-		if (err) {
+		if (err)
 			pr_warn("error to generate BTF info\n");
-			return -err;
-		}
 
-		return 0;
+		return err;
 	}
 
 	/* bpf_core_patch_insn() should know how to handle missing targ_spec */
