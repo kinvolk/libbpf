@@ -13,8 +13,6 @@
 #include "str_error.h"
 #include "libbpf_internal.h"
 
-#define BPF_CORE_SPEC_MAX_LEN 64
-
 /* represents BPF CO-RE field or array element accessor */
 struct bpf_core_accessor {
 	__u32 type_id;		/* struct/union type or array element type */
@@ -763,6 +761,8 @@ struct bpf_core_relo_res
 	__u32 orig_type_id;
 	__u32 new_sz;
 	__u32 new_type_id;
+
+	const struct bpf_core_spec *targ_spec;
 };
 
 /* Calculate original and target relocation values, given local and target
@@ -854,6 +854,8 @@ done:
 			relo->kind, relo->insn_off / 8);
 	}
 
+	res->targ_spec = targ_spec;
+
 	return err;
 }
 
@@ -918,7 +920,8 @@ static int insn_bytes_to_bpf_size(__u32 sz)
  */
 static int bpf_core_patch_insn(const char *prog_name, struct bpf_insn *insn,
 			       int insn_idx, const struct bpf_core_relo *relo,
-			       int relo_idx, const struct bpf_core_relo_res *res)
+			       int relo_idx, const struct bpf_core_relo_res *res,
+				   struct bpf_core_relo_pub *core_relo)
 {
 	__u32 orig_val, new_val;
 	__u8 class;
@@ -933,6 +936,7 @@ poison:
 		if (is_ldimm64_insn(insn))
 			bpf_core_poison_insn(prog_name, relo_idx, insn_idx + 1, insn + 1);
 		bpf_core_poison_insn(prog_name, relo_idx, insn_idx, insn);
+		core_relo->poison = true;
 		return 0;
 	}
 
@@ -1037,6 +1041,11 @@ poison:
 			insn->src_reg, insn->dst_reg, insn->off, insn->imm);
 		return -EINVAL;
 	}
+
+	core_relo->poison = false;
+	core_relo->prog_name = prog_name;
+	core_relo->insn_idx = insn_idx;
+	core_relo->targ_spec.root_type_id = res->targ_spec->root_type_id;
 
 	return 0;
 }
@@ -1147,7 +1156,8 @@ int bpf_core_apply_relo_insn(const char *prog_name, struct bpf_insn *insn,
 			     const struct bpf_core_relo *relo,
 			     int relo_idx,
 			     const struct btf *local_btf,
-			     struct bpf_core_cand_list *cands)
+			     struct bpf_core_cand_list *cands,
+			     struct bpf_core_relo_pub *core_relo)
 {
 	struct bpf_core_spec local_spec, cand_spec, targ_spec = {};
 	struct bpf_core_relo_res cand_res, targ_res;
@@ -1284,7 +1294,7 @@ int bpf_core_apply_relo_insn(const char *prog_name, struct bpf_insn *insn,
 
 patch_insn:
 	/* bpf_core_patch_insn() should know how to handle missing targ_spec */
-	err = bpf_core_patch_insn(prog_name, insn, insn_idx, relo, relo_idx, &targ_res);
+	err = bpf_core_patch_insn(prog_name, insn, insn_idx, relo, relo_idx, &targ_res, core_relo);
 	if (err) {
 		pr_warn("prog '%s': relo #%d: failed to patch insn #%u: %d\n",
 			prog_name, relo_idx, relo->insn_off / 8, err);

@@ -1020,6 +1020,54 @@ LIBBPF_API int bpf_linker__add_file(struct bpf_linker *linker,
 LIBBPF_API int bpf_linker__finalize(struct bpf_linker *linker);
 LIBBPF_API void bpf_linker__free(struct bpf_linker *linker);
 
+/* bpf_core_relo_kind encodes which aspect of captured field/type/enum value
+ * has to be adjusted by relocations.
+ */
+enum bpf_core_relo_kind {
+	BPF_FIELD_BYTE_OFFSET = 0,	/* field byte offset */
+	BPF_FIELD_BYTE_SIZE = 1,	/* field size in bytes */
+	BPF_FIELD_EXISTS = 2,		/* field existence in target kernel */
+	BPF_FIELD_SIGNED = 3,		/* field signedness (0 - unsigned, 1 - signed) */
+	BPF_FIELD_LSHIFT_U64 = 4,	/* bitfield-specific left bitshift */
+	BPF_FIELD_RSHIFT_U64 = 5,	/* bitfield-specific right bitshift */
+	BPF_TYPE_ID_LOCAL = 6,		/* type ID in local BPF object */
+	BPF_TYPE_ID_TARGET = 7,		/* type ID in target kernel */
+	BPF_TYPE_EXISTS = 8,		/* type existence in target kernel */
+	BPF_TYPE_SIZE = 9,		/* type size in bytes */
+	BPF_ENUMVAL_EXISTS = 10,	/* enum value existence in target kernel */
+	BPF_ENUMVAL_VALUE = 11,		/* enum value integer value */
+};
+
+#define BPF_CORE_SPEC_MAX_LEN 64
+
+/* reduced version of struct bpf_core_spec */
+struct bpf_core_spec_pub {
+	const struct btf *btf;
+	__u32 root_type_id;
+	enum bpf_core_relo_kind kind;
+	/* raw, low-level spec: 1-to-1 with accessor spec string */
+	int raw_spec[BPF_CORE_SPEC_MAX_LEN];
+	/* raw spec length */
+	int raw_len;
+};
+
+struct bpf_core_relo_pub {
+	const char *prog_name;
+	int insn_idx;
+
+	bool poison;
+
+	/* new field offset for field based core relos */
+	__u32 new_offset;
+
+	// TODO: fields for type
+
+	struct bpf_core_spec_pub local_spec, targ_spec;
+};
+
+LIBBPF_API struct bpf_core_relo_pub *bpf_program__core_relos(struct bpf_program *prog);
+LIBBPF_API int bpf_program__n_core_relos(struct bpf_program *prog);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

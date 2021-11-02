@@ -332,6 +332,9 @@ struct bpf_program {
 	__u32 line_info_rec_size;
 	__u32 line_info_cnt;
 	__u32 prog_flags;
+
+	struct bpf_core_relo_pub *core_relos;
+	int n_core_relos;
 };
 
 struct bpf_struct_ops {
@@ -4976,7 +4979,7 @@ static int init_map_slots(struct bpf_object *obj, struct bpf_map *map)
 	return 0;
 }
 
-static int
+int
 bpf_object__create_maps(struct bpf_object *obj)
 {
 	struct bpf_map *map;
@@ -5457,7 +5460,15 @@ static int bpf_core_apply_relo(struct bpf_program *prog,
 		}
 	}
 
-	return bpf_core_apply_relo_insn(prog_name, insn, insn_idx, relo, relo_idx, local_btf, cands);
+	struct bpf_core_relo_pub *core_relo = &prog->core_relos[relo_idx];
+
+	core_relo->prog_name = prog_name;
+	core_relo->insn_idx = insn_idx;
+
+	err = bpf_core_apply_relo_insn(prog_name, insn, insn_idx, relo, relo_idx, local_btf, cands, core_relo);
+
+
+	return err;
 }
 
 static int
@@ -5517,6 +5528,9 @@ bpf_object__relocate_core(struct bpf_object *obj, const char *targ_btf_path)
 
 		pr_debug("sec '%s': found %d CO-RE relocations\n",
 			 sec_name, sec->num_info);
+
+		prog->core_relos = malloc(sec->num_info * sizeof(struct bpf_core_relo_pub));
+		prog->n_core_relos = sec->num_info;
 
 		for_each_btf_ext_rec(seg, sec, i, rec) {
 			insn_idx = rec->insn_off / BPF_INSN_SZ;
@@ -6670,7 +6684,7 @@ out:
 	return libbpf_err(err);
 }
 
-static int
+int
 bpf_object__load_progs(struct bpf_object *obj, int log_level)
 {
 	struct bpf_program *prog;
@@ -7266,9 +7280,9 @@ int bpf_object__load_xattr(struct bpf_object_load_attr *attr)
 	err = err ? : bpf_object__sanitize_and_load_btf(obj);
 	err = err ? : bpf_object__sanitize_maps(obj);
 	err = err ? : bpf_object__init_kern_struct_ops_maps(obj);
-	err = err ? : bpf_object__create_maps(obj);
+	//err = err ? : bpf_object__create_maps(obj);
 	err = err ? : bpf_object__relocate(obj, obj->btf_custom_path ? : attr->target_btf_path);
-	err = err ? : bpf_object__load_progs(obj, attr->log_level);
+	//err = err ? : bpf_object__load_progs(obj, attr->log_level);
 
 	if (obj->gen_loader) {
 		/* reset FDs */
@@ -11471,4 +11485,12 @@ void bpf_object__destroy_skeleton(struct bpf_object_skeleton *s)
 	free(s->maps);
 	free(s->progs);
 	free(s);
+}
+
+struct bpf_core_relo_pub *bpf_program__core_relos(struct bpf_program *prog) {
+	return prog->core_relos;
+}
+
+int bpf_program__n_core_relos(struct bpf_program *prog) {
+	return prog->n_core_relos;
 }
