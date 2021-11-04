@@ -402,4 +402,5 @@ LIBBPF_0.6.0 {
 		btf__raw_data;
 		btf__type_cnt;
 		btf__save_raw;
+		bpf_object__prepare;
 } LIBBPF_0.5.0;
