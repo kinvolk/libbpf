@@ -304,6 +304,10 @@ struct bpf_program {
 
 	struct reloc_desc *reloc_desc;
 	int nr_reloc;
+
+	struct bpf_core_relo_result *core_relos;
+	size_t nr_core_relos;
+
 	int log_level;
 
 	struct {
@@ -517,6 +521,9 @@ struct bpf_object {
 	bool has_subcalls;
 	bool has_rodata;
 
+	/* Record CO-RE relocations for the different programs in prog->core_relos */
+	bool record_core_relos;
+
 	struct bpf_gen *gen_loader;
 
 	/* Information when doing ELF related work. Only valid if efile.elf is not NULL */
@@ -612,8 +619,10 @@ static void bpf_program__exit(struct bpf_program *prog)
 	zfree(&prog->pin_name);
 	zfree(&prog->insns);
 	zfree(&prog->reloc_desc);
+	zfree(&prog->core_relos);
 
 	prog->nr_reloc = 0;
+	prog->nr_core_relos = 0;
 	prog->insns_cnt = 0;
 	prog->sec_idx = -1;
 }
@@ -5426,6 +5435,7 @@ static int bpf_core_apply_relo(struct bpf_program *prog,
 			       struct hashmap *cand_cache)
 {
 	const void *type_key = u32_as_hash_key(relo->type_id);
+	struct bpf_core_relo_result *core_relo = NULL;
 	struct bpf_core_cand_list *cands = NULL;
 	const char *prog_name = prog->name;
 	const struct btf_type *local_type;
@@ -5477,7 +5487,18 @@ static int bpf_core_apply_relo(struct bpf_program *prog,
 		}
 	}
 
-	return bpf_core_apply_relo_insn(prog_name, insn, insn_idx, relo, relo_idx, local_btf, cands);
+	if (prog->obj->record_core_relos) {
+		prog->core_relos = libbpf_reallocarray(prog->core_relos,
+						       sizeof(*prog->core_relos),
+						       prog->nr_core_relos + 1);
+		if (!prog->core_relos)
+			return -ENOMEM;
+
+		core_relo = &prog->core_relos[prog->nr_core_relos++];
+	}
+
+	return bpf_core_apply_relo_insn(prog_name, insn, insn_idx, relo, relo_idx, local_btf, cands,
+					core_relo);
 }
 
 static int
@@ -5833,6 +5854,28 @@ static int append_subprog_relos(struct bpf_program *main_prog, struct bpf_progra
 	return 0;
 }
 
+static int append_subprog_core_relos(struct bpf_program *main_prog, struct bpf_program *subprog)
+{
+	int new_cnt = main_prog->nr_core_relos + subprog->nr_core_relos;
+	struct bpf_core_relo_result *relos;
+	int i;
+
+	if (main_prog == subprog)
+		return 0;
+	relos = libbpf_reallocarray(main_prog->core_relos, new_cnt, sizeof(*relos));
+	if (!relos)
+		return -ENOMEM;
+	memcpy(relos + main_prog->nr_core_relos, subprog->core_relos,
+	       sizeof(*relos) * subprog->nr_core_relos);
+
+	for (i = main_prog->nr_core_relos; i < new_cnt; i++)
+		relos[i].insn_idx += subprog->sub_insn_off;
+
+	main_prog->core_relos = relos;
+	main_prog->nr_core_relos = new_cnt;
+	return 0;
+}
+
 static int
 bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
 		       struct bpf_program *prog)
@@ -5936,6 +5979,11 @@ bpf_object__reloc_code(struct bpf_object *obj, struct bpf_program *main_prog,
 			err = append_subprog_relos(main_prog, subprog);
 			if (err)
 				return err;
+
+			err = append_subprog_core_relos(main_prog, subprog);
+			if (err)
+				return err;
+
 			err = bpf_object__reloc_code(obj, main_prog, subprog);
 			if (err)
 				return err;
@@ -6863,6 +6911,8 @@ __bpf_object__open(const char *path, const void *obj_buf, size_t obj_buf_sz,
 			goto out;
 		}
 	}
+
+	obj->record_core_relos = OPTS_GET(opts, record_core_relos, false);
 
 	err = bpf_object__elf_init(obj);
 	err = err ? : bpf_object__check_endianness(obj);
@@ -8268,6 +8318,16 @@ const struct bpf_insn *bpf_program__insns(const struct bpf_program *prog)
 size_t bpf_program__insn_cnt(const struct bpf_program *prog)
 {
 	return prog->insns_cnt;
+}
+
+const struct bpf_core_relo_result *bpf_program__core_relos(struct bpf_program *prog)
+{
+	return prog->core_relos;
+}
+
+size_t bpf_program__core_relos_cnt(struct bpf_program *prog)
+{
+	return prog->nr_core_relos;
 }
 
 int bpf_program__set_prep(struct bpf_program *prog, int nr_instances,
