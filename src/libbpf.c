@@ -7371,10 +7371,6 @@ static int __bpf_object__prepare(struct bpf_object *obj, int log_level,
 		bpf_gen__init(obj->gen_loader, log_level);
 
 	err = bpf_object__load_vmlinux_btf(obj, false);
-	err = err ? : bpf_object__resolve_externs(obj, obj->kconfig);
-	err = err ? : bpf_object__sanitize_and_load_btf(obj);
-	err = err ? : bpf_object__sanitize_maps(obj);
-	err = err ? : bpf_object__init_kern_struct_ops_maps(obj);
 	err = err ? : bpf_object__relocate(obj, obj->btf_custom_path ? : target_btf_path);
 
 	obj->prepared = true;
@@ -7412,7 +7408,11 @@ int bpf_object__load_xattr(struct bpf_object_load_attr *attr)
 	}
 
 	err = bpf_object__probe_loading(obj);
-	err = err ? :bpf_object__create_maps(obj);
+	err = err ? : bpf_object__resolve_externs(obj, obj->kconfig);
+	err = err ? : bpf_object__sanitize_and_load_btf(obj);
+	err = err ? : bpf_object__sanitize_maps(obj);
+	err = err ? : bpf_object__init_kern_struct_ops_maps(obj);
+	err = err ? : bpf_object__create_maps(obj);
 	err = err ? : bpf_object__finish_relocate(obj);
 	err = err ? : bpf_object__load_progs(obj, attr->log_level);
 
